@@ -82,6 +82,7 @@ func (s *Store) Put(machine string, r Report) {
 		x.Branch = trim(x.Branch)
 		x.Tool = trim(x.Tool)
 		x.Entrypoint = trim(x.Entrypoint)
+		x.Title = trim(x.Title)
 		switch x.Status {
 		case session.Working, session.Waiting, session.Idle, session.Stale:
 		default:

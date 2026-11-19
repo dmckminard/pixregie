@@ -31,15 +31,19 @@ const (
 
 // Session is the content-free record shared with the collector.
 type Session struct {
-	ID         string    `json:"id"`
-	Machine    string    `json:"machine"`
-	Project    string    `json:"project"`          // basename of the working directory
-	Branch     string    `json:"branch,omitempty"` // git branch, if any
-	Status     Status    `json:"status"`
-	Tool       string    `json:"tool,omitempty"` // tool currently running, e.g. "Bash"
-	Entrypoint string    `json:"entrypoint,omitempty"`
-	LastEvent  time.Time `json:"last_event"` // timestamp of the last transcript entry
-	Modified   time.Time `json:"modified"`   // file modification time
+	ID         string `json:"id"`
+	Machine    string `json:"machine"`
+	Project    string `json:"project"`          // basename of the working directory
+	Branch     string `json:"branch,omitempty"` // git branch, if any
+	Status     Status `json:"status"`
+	Tool       string `json:"tool,omitempty"` // tool currently running, e.g. "Bash"
+	Entrypoint string `json:"entrypoint,omitempty"`
+	// Title is the session's name as Claude Code shows it (rename,
+	// generated title or summary). Unlike everything else here it is
+	// derived from the conversation; it is only shown on the local board.
+	Title     string    `json:"title,omitempty"`
+	LastEvent time.Time `json:"last_event"` // timestamp of the last transcript entry
+	Modified  time.Time `json:"modified"`   // file modification time
 	// Open is true when Claude Code reported the session as running
 	// (SessionStart hook seen, no SessionEnd yet).
 	Open bool `json:"open,omitempty"`

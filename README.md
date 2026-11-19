@@ -58,9 +58,14 @@ Re-run it to upgrade; `--add-agent NAME` creates a token for another machine.
 
 ## Install the agent
 
-**macOS**: download `Pixregie-macos.zip` from the latest release, unzip,
-move `Pixregie.app` to Applications, then right-click > Open the first time
-(the app is not notarised). **Windows**: run `Pixregie.exe`.
+**macOS** (install or update):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dmckminard/pixregie/main/install/mac/install.sh | bash
+```
+
+The app is not notarised yet; installed this way (checksum verified),
+macOS does not block it. **Windows**: run `Pixregie.exe`.
 
 On first launch the app asks for the token printed by the Pi installer,
 stores it in the Keychain (macOS) or encrypted with DPAPI (Windows), finds

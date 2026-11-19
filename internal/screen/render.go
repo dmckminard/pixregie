@@ -319,12 +319,16 @@ func (c *canvas) desk(x, y, w int, s session.Session, i int, accent color.RGBA, 
 	c.fill(x+20, y+106, x+20+152, y+106+28, cOutline)
 	c.fill(x+24, y+106, x+24+144, y+106+24, th.desk)
 
+	// Three lines in the narrow VT323 face, across the whole column:
+	// project, session title, state.
 	maxW := w - 16
-	if maxW > 176 {
-		maxW = 176
+	c.text(c.f.body, x+12, y+138, c.fit(c.f.body, s.Project, maxW), cText, 0)
+	line := y + 158
+	if s.Title != "" {
+		c.text(c.f.body, x+12, line, c.fit(c.f.body, s.Title, maxW), cMuted, 0)
+		line += 20
 	}
-	c.text(c.f.small, x+12, y+142, c.fit(c.f.small, s.Project, maxW), cText, 0)
-	c.text(c.f.body, x+12, y+164, c.fit(c.f.body, label(s, o.Now), maxW), st.label, 0)
+	c.text(c.f.body, x+12, line, c.fit(c.f.body, label(s, o.Now), maxW), st.label, 0)
 }
 
 func label(s session.Session, now time.Time) string {

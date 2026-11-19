@@ -21,12 +21,18 @@ const maxLine = 8 * 1024 * 1024
 // entry holds only the transcript fields we use. Everything else, including
 // all text content, is never decoded into memory we keep.
 type entry struct {
-	Type        string          `json:"type"`
-	IsSidechain bool            `json:"isSidechain"`
-	IsMeta      bool            `json:"isMeta"`
-	Cwd         string          `json:"cwd"`
-	GitBranch   string          `json:"gitBranch"`
-	Entrypoint  string          `json:"entrypoint"`
+	Type        string `json:"type"`
+	IsSidechain bool   `json:"isSidechain"`
+	IsMeta      bool   `json:"isMeta"`
+	Cwd         string `json:"cwd"`
+	GitBranch   string `json:"gitBranch"`
+	Entrypoint  string `json:"entrypoint"`
+	// Session title, depending on the Claude Code version: a /rename
+	// ("custom-title"), a generated title ("ai-title") or a resume summary.
+	CustomTitle string          `json:"customTitle"`
+	AITitle     string          `json:"aiTitle"`
+	Title       string          `json:"title"`
+	Summary     string          `json:"summary"`
 	Timestamp   time.Time       `json:"timestamp"`
 	Message     json.RawMessage `json:"message"`
 }
@@ -55,6 +61,8 @@ type state struct {
 	cwd        string
 	branch     string
 	entrypoint string
+	title      string
+	titleRank  int // custom > generated > summary
 	last       time.Time
 }
 
@@ -79,12 +87,44 @@ func (s *state) apply(e *entry) {
 		s.last = e.Timestamp
 	}
 
+	s.applyTitle(e)
 	switch e.Type {
 	case "assistant":
 		s.applyAssistant(e)
 	case "user":
 		s.applyUser(e)
 	}
+}
+
+// applyTitle keeps the best session title seen: a user rename beats a
+// generated title, which beats a resume summary. Later ones win at equal
+// rank (titles get regenerated).
+func (s *state) applyTitle(e *entry) {
+	var t string
+	rank := 0
+	switch e.Type {
+	case "custom-title":
+		t, rank = firstNonEmpty(e.CustomTitle, e.Title), 3
+	case "ai-title":
+		t, rank = firstNonEmpty(e.AITitle, e.Title), 2
+	case "summary":
+		t, rank = e.Summary, 1
+	default:
+		return
+	}
+	t = strings.TrimSpace(strings.Join(strings.Fields(t), " "))
+	if t != "" && rank >= s.titleRank {
+		s.title, s.titleRank = t, rank
+	}
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, x := range v {
+		if x != "" {
+			return x
+		}
+	}
+	return ""
 }
 
 func (s *state) applyAssistant(e *entry) {
@@ -191,6 +231,7 @@ func ParseFile(path string, opt Options) (Session, error) {
 		Branch:     st.branch,
 		Status:     st.status,
 		Entrypoint: st.entrypoint,
+		Title:      st.title,
 		LastEvent:  st.last,
 		Modified:   fi.ModTime(),
 	}
@@ -210,10 +251,26 @@ func parse(r io.ReaderAt, size int64) (*state, error) {
 	if off < 0 {
 		off = 0
 	}
-	sc := bufio.NewScanner(io.NewSectionReader(r, off, size-off))
-	sc.Buffer(make([]byte, 64*1024), maxLine)
 	st := newState()
-	first := off > 0 // first line may be cut in half
+	// Summaries are written at the top of a resumed transcript, beyond the
+	// tail of a long one: read the head for titles only.
+	if off > 0 {
+		head := newState()
+		scanLines(io.NewSectionReader(r, 0, min(headBytes, off)), false, head)
+		st.title, st.titleRank = head.title, head.titleRank
+	}
+	err := scanLines(io.NewSectionReader(r, off, size-off), off > 0, st)
+	return st, err
+}
+
+// headBytes is how much of the start of a long transcript is read for its
+// title.
+const headBytes = 64 * 1024
+
+func scanLines(r io.Reader, skipFirst bool, st *state) error {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64*1024), maxLine)
+	first := skipFirst // first line may be cut in half
 	for sc.Scan() {
 		line := sc.Bytes()
 		if first {
@@ -231,9 +288,9 @@ func parse(r io.ReaderAt, size int64) (*state, error) {
 		st.apply(&e)
 	}
 	if err := sc.Err(); err != nil && err != bufio.ErrTooLong {
-		return nil, err
+		return err
 	}
-	return st, nil
+	return nil
 }
 
 // projectName returns the last path element of the working directory.

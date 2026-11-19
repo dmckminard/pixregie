@@ -9,8 +9,9 @@ import (
 
 // Demo returns a state with every status, for tests and the preview tool.
 func Demo(now time.Time) collector.State {
+	titles := map[string]string{"api-gateway": "Refonte du cache", "mobile-app": "Écran de connexion", "data-sync": "Synchro des comptes"}
 	s := func(p string, st session.Status, tool string, age time.Duration) session.Session {
-		return session.Session{ID: p, Project: p, Status: st, Tool: tool, Modified: now.Add(-age)}
+		return session.Session{ID: p, Project: p, Title: titles[p], Status: st, Tool: tool, Modified: now.Add(-age)}
 	}
 	return collector.State{Generated: now, Machines: []collector.Machine{
 		{Name: "Mac", Online: true, LastSeen: now, Sessions: []session.Session{

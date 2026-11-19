@@ -150,3 +150,29 @@ func TestScan(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestTitle(t *testing.T) {
+	const (
+		summary = `{"type":"summary","summary":"Old summary","leafUuid":"x"}`
+		aiTitle = `{"type":"ai-title","aiTitle":"Synchro des comptes","sessionId":"x"}`
+		custom  = `{"type":"custom-title","customTitle":"  Mon\nnom  ","sessionId":"x"}`
+	)
+	if s := parseT(t, now, summary, lPrompt); s.Title != "Old summary" {
+		t.Fatalf("summary: %q", s.Title)
+	}
+	if s := parseT(t, now, summary, aiTitle, lPrompt); s.Title != "Synchro des comptes" {
+		t.Fatalf("ai: %q", s.Title)
+	}
+	if s := parseT(t, now, custom, aiTitle, lPrompt); s.Title != "Mon nom" {
+		t.Fatalf("custom wins: %q", s.Title)
+	}
+	// Summary at the top of a transcript longer than the tail window.
+	filler := `{"type":"user","message":{"content":"` + strings.Repeat("x", 4000) + `"}}`
+	lines := []string{summary}
+	for i := 0; i < 300; i++ {
+		lines = append(lines, filler)
+	}
+	if s := parseT(t, now, append(lines, lPrompt)...); s.Title != "Old summary" {
+		t.Fatalf("head title: %q", s.Title)
+	}
+}
