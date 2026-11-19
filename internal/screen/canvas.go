@@ -19,11 +19,11 @@ const (
 // of these from the framebuffer writer.
 var Scales = []float64{1, 1.5}
 
-type fontSet struct{ small, title, body *font }
+type fontSet struct{ small, title, body, label *font }
 
 var fontSets = map[float64]fontSet{
-	1:   {silk16, silk24b, vt20},
-	1.5: {mustFont("silk24"), mustFont("silk32b"), mustFont("vt30")},
+	1:   {silk16, silk24b, vt20, mustFont("vt16")},
+	1.5: {mustFont("silk24"), mustFont("silk32b"), mustFont("vt30"), mustFont("vt24")},
 }
 
 type canvas struct {

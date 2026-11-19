@@ -22,6 +22,9 @@ FACES = {
     "silk24": ("Silkscreen-Regular.ttf", 24),
     "silk32b": ("Silkscreen-Bold.ttf", 32),
     "vt30": ("VT323-Regular.ttf", 30),
+    # Desk labels (project, session, state): smaller than body text.
+    "vt16": ("VT323-Regular.ttf", 16),
+    "vt24": ("VT323-Regular.ttf", 24),
 }
 
 for name, (ttf, size) in FACES.items():
