@@ -5,7 +5,7 @@ on:
 permissions:
   contents: write
 jobs:
-  build:
+  linux-windows:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,24 +14,59 @@ jobs:
           go-version-file: go.mod
       - run: go test ./...
       - name: Build
-        env:
-          CGO_ENABLED: "0"
         run: |
           set -eu
           v="${GITHUB_REF_NAME}"
           mkdir dist
-          build() { # cmd os arch [goarm]
-            out="dist/$1-$2-$3"; [ "$2" = windows ] && out="$out.exe"
-            GOOS=$2 GOARCH=$3 GOARM=${4:-} go build -trimpath -ldflags "-s -w -X main.version=$v" -o "$out" "./cmd/$1"
+          build() { # cmd os arch out [goarm] [extra ldflags]
+            CGO_ENABLED=0 GOOS=$2 GOARCH=$3 GOARM=${5:-} go build -trimpath \
+              -ldflags "-s -w -X main.version=$v ${6:-}" -o "dist/$4" "./cmd/$1"
           }
-          build pixregie-display linux arm64
-          build pixregie-display linux arm 6
-          for os_arch in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64; do
-            build pixregie-agent "${os_arch%/*}" "${os_arch#*/}"
-          done
+          build pixregie-display linux arm64 pixregie-display-linux-arm64
+          build pixregie-display linux arm pixregie-display-linux-arm 6
+          build pixregie-agent linux amd64 pixregie-agent-linux-amd64
+          build pixregie-agent linux arm64 pixregie-agent-linux-arm64
+          # Tray app: no console window.
+          build pixregie-agent windows amd64 Pixregie.exe "" "-H windowsgui"
           cp install/pi/install.sh dist/install-pi.sh
-          (cd dist && sha256sum * > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-windows
+          path: dist/*
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./cmd/pixregie-agent
+      - run: |
+          mkdir dist
+          packaging/macos/build-app.sh "$GITHUB_REF_NAME" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/Pixregie-macos.zip
+
+  publish:
+    needs: [linux-windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          cd dist && sha256sum * > SHA256SUMS && cd ..
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+          fi
