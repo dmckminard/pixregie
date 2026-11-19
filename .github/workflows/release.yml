@@ -63,6 +63,8 @@ jobs:
           # Tray app: no console window.
           build pixregie-agent windows amd64 Pixregie.exe "" "-H windowsgui"
           cp install/pi/install.sh dist/install-pi.sh
+          cp install/server/install.sh dist/install-server.sh
+          cp install/mac/install.sh dist/install-mac.sh
       - uses: actions/upload-artifact@v7
         with:
           name: linux-windows
@@ -90,6 +92,10 @@ jobs:
     needs: [version, linux-windows, macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: release.pub
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -99,9 +105,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.tag }}
+          SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
         run: |
           set -eu
-          cd dist && sha256sum * > SHA256SUMS && cd ..
+          cd dist && sha256sum * > SHA256SUMS
+          # Sign the checksum list with the release key (GitHub secret).
+          # Every installer and updater refuses a release whose signature
+          # does not verify.
+          if [ -z "${SIGNING_KEY}" ]; then echo "RELEASE_SIGNING_KEY secret missing"; exit 1; fi
+          umask 077
+          printf '%s\n' "${SIGNING_KEY}" > "$RUNNER_TEMP/signing_key"
+          ssh-keygen -Y sign -q -f "$RUNNER_TEMP/signing_key" -n pixregie-release SHA256SUMS
+          rm -f "$RUNNER_TEMP/signing_key"
+          printf 'pixregie-release namespaces="pixregie-release" %s\n' "$(cat ../release.pub)" > "$RUNNER_TEMP/allowed"
+          ssh-keygen -Y verify -f "$RUNNER_TEMP/allowed" -I pixregie-release -n pixregie-release -s SHA256SUMS.sig < SHA256SUMS
+          cd ..
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else
