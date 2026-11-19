@@ -103,19 +103,24 @@ if [ ! -f "$CONF" ]; then
   unset pw1 pw2
 fi
 
-# --- screen: 1280x720, no blanking, no console cursor -----------------------
+# --- screen: native resolution, no blanking, no console cursor --------------
+# The picture adapts to the screen (1280x720, 1920x1080 and integer
+# multiples are pixel-perfect), so the HDMI mode is left to the monitor.
 CMDLINE="$(cmdline_file)"
 NEED_REBOOT=0
 if [ -n "$CMDLINE" ]; then
-  for opt in "video=HDMI-A-1:1280x720@60" "consoleblank=0" "vt.global_cursor_default=0"; do
+  # v0.1.0 forced 1280x720: undo it.
+  if grep -q ' video=HDMI-A-1:1280x720@60' "$CMDLINE"; then
+    sed -i 's| video=HDMI-A-1:1280x720@60||' "$CMDLINE"
+    NEED_REBOOT=1
+  fi
+  for opt in "consoleblank=0" "vt.global_cursor_default=0"; do
     if ! grep -qw -- "${opt%%=*}=[^ ]*" "$CMDLINE"; then
       cp -n "$CMDLINE" "$CMDLINE.pixregie-backup"
       sed -i "1 s|\$| $opt|" "$CMDLINE"
       NEED_REBOOT=1
     fi
   done
-else
-  warn "cmdline.txt not found: set HDMI to 1280x720 yourself for square pixels"
 fi
 # The login prompt on tty1 would flicker over the picture. tty2 stays
 # available (Ctrl+Alt+F2) with a keyboard.
@@ -205,5 +210,5 @@ echo
 say "Done. Debug page: http://$IP:$PORT  (any user name, your password)"
 say "Another machine: sudo bash install-pi.sh --add-agent PC"
 if [ "$NEED_REBOOT" -eq 1 ]; then
-  warn "Reboot once to switch the screen to 1280x720: sudo reboot"
+  warn "Reboot once to apply the screen settings: sudo reboot"
 fi

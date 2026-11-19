@@ -44,13 +44,19 @@ func (p *painter) run(ctx context.Context) {
 			p.log.Printf("drawing on %s (%dx%d, %d bpp)", p.fbDev, dev.W, dev.H, dev.BPP)
 		}
 	}
+	scale := 1.0
+	if dev != nil {
+		var k int
+		scale, k = screen.BestScale(dev.W, dev.H)
+		p.log.Printf("rendering at %dx%d, upscaled x%d", int(screen.Width*scale), int(screen.Height*scale), k)
+	}
 	host, _ := os.Hostname()
 	t := time.NewTicker(frameEvery)
 	defer t.Stop()
 	for frame := 0; ; frame++ {
 		now := time.Now()
 		img := screen.Render(p.store.Snapshot(), screen.Options{
-			Frame: frame, Night: isNight(now), Now: now, Host: host + ".local",
+			Frame: frame, Night: isNight(now), Now: now, Host: host + ".local", Scale: scale,
 		})
 		p.mu.Lock()
 		p.last = img
@@ -103,9 +109,10 @@ func renderPNG(args []string) {
 	out := fs.String("o", "pixregie.png", "output PNG")
 	night := fs.Bool("night", true, "night mode")
 	frame := fs.Int("frame", 0, "animation frame")
+	scale := fs.Float64("scale", 1, "1 (1280x720) or 1.5 (1920x1080)")
 	fs.Parse(args)
 	now := time.Now()
-	img := screen.Render(screen.Demo(now), screen.Options{Frame: *frame, Night: *night, Now: now, Host: "pixregie.local"})
+	img := screen.Render(screen.Demo(now), screen.Options{Frame: *frame, Night: *night, Now: now, Host: "pixregie.local", Scale: *scale})
 	f, err := os.Create(*out)
 	if err != nil {
 		log.Fatal(err)

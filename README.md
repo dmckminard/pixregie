@@ -52,7 +52,7 @@ curl -fsSLO https://github.com/dmckminard/pixregie/releases/latest/download/inst
 sudo bash install-pi.sh
 ```
 
-The script installs a hardened systemd service, sets HDMI to 1280×720,
+The script installs a hardened systemd service, hides the console,
 asks for the debug page password and prints a token for your first machine.
 Re-run it to upgrade; `--add-agent NAME` creates a token for another machine.
 

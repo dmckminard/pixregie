@@ -13,10 +13,15 @@ from PIL import Image, ImageDraw, ImageFont
 FONTS = os.path.join("internal", "screen", "fonts")
 CHARS = "".join(chr(c) for c in range(32, 127)) + "àâäçéèêëîïôöùûüÿœÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŒ·…×—’«»°"
 
+# Two sets: x1 for 1280x720, x1.5 for native 1920x1080. Silkscreen sizes
+# stay on its 8 px grid so the glyphs remain crisp.
 FACES = {
     "silk16": ("Silkscreen-Regular.ttf", 16),
     "silk24b": ("Silkscreen-Bold.ttf", 24),
     "vt20": ("VT323-Regular.ttf", 20),
+    "silk24": ("Silkscreen-Regular.ttf", 24),
+    "silk32b": ("Silkscreen-Bold.ttf", 32),
+    "vt30": ("VT323-Regular.ttf", 30),
 }
 
 for name, (ttf, size) in FACES.items():
