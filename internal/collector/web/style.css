@@ -31,3 +31,16 @@ section.offline { opacity: .55; }
 #screen { margin: 0 0 16px; border: 2px solid var(--line); background: #000; }
 #screen img { display: block; width: 100%; height: auto; image-rendering: pixelated; }
 #screen.off { display: none; }
+#admin { padding-bottom: 8px; }
+#admin h3 { font-size: 13px; margin: 14px 12px 6px; color: var(--muted); font-weight: normal; letter-spacing: 1px; text-transform: uppercase; }
+#admin .form { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 12px; }
+#admin label { display: flex; gap: 8px; align-items: center; }
+#admin select, #admin input[type=text], #admin button { font: inherit; color: var(--fg); background: var(--bg);
+  border: 2px solid var(--line); padding: 6px 8px; min-height: 36px; }
+#admin button { cursor: pointer; }
+#admin button:hover { border-color: var(--muted); }
+#admin button.danger:hover { border-color: var(--stale); color: var(--stale); }
+.prow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 12px; border-top: 1px solid var(--line); }
+.prow .name { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.small { font-size: 12px; padding: 0 12px; }
+code { background: var(--bg); padding: 1px 4px; }

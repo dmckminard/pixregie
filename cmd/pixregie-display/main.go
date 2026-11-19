@@ -113,6 +113,28 @@ func serve(args []string) {
 			return save(*path, c)
 		},
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	painter.sleepAfter = cfg.sleepAfter()
+	painter.hideTitles = !cfg.showTitles()
+	puller := newPuller(store, logger)
+	puller.set(cfg.Servers)
+	go puller.run(ctx)
+	applyCfg := func(c Config) {
+		srv.SetAgents(c.Agents)
+		puller.set(c.Servers)
+		store.Retain(c.labels())
+		painter.setSleepAfter(c.sleepAfter())
+		painter.setHideTitles(!c.showTitles())
+	}
+	go watchConfig(ctx, *path, logger, applyCfg)
+	adm := &admin{path: *path, store: store, apply: applyCfg}
+	srv.Extra["/v1/admin"] = http.HandlerFunc(adm.get)
+	srv.AdminPost = map[string]http.Handler{
+		"/v1/admin/settings": http.HandlerFunc(adm.settings),
+		"/v1/admin/rename":   http.HandlerFunc(adm.rename),
+		"/v1/admin/revoke":   http.HandlerFunc(adm.revoke),
+	}
 	hs := &http.Server{
 		Addr:              cfg.Listen,
 		Handler:           srv.Handler(),
@@ -122,20 +144,6 @@ func serve(args []string) {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    16 << 10,
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	painter.sleepAfter = cfg.sleepAfter()
-	painter.hideTitles = !cfg.showTitles()
-	puller := newPuller(store, logger)
-	puller.set(cfg.Servers)
-	go puller.run(ctx)
-	go watchConfig(ctx, *path, logger, func(c Config) {
-		srv.SetAgents(c.Agents)
-		puller.set(c.Servers)
-		store.Retain(c.labels())
-		painter.setSleepAfter(c.sleepAfter())
-		painter.setHideTitles(!c.showTitles())
-	})
 	go painter.run(ctx)
 	go func() {
 		<-ctx.Done()

@@ -64,3 +64,74 @@ async function tick() {
 }
 tick();
 setInterval(tick, 2000);
+
+// --- Settings and paired machines -----------------------------------------
+// Changes are sent with the X-Pixregie header: the Pi refuses changes that
+// do not carry it, which a page from another site cannot add.
+
+async function post(path, body) {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Pixregie': '1' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.text()).trim() || r.statusText);
+}
+
+function say(msg) {
+  const m = document.getElementById('admin-msg');
+  m.textContent = msg;
+  clearTimeout(say.t);
+  say.t = setTimeout(() => { m.textContent = ''; }, 4000);
+}
+
+async function act(fn, ok) {
+  try { await fn(); say(ok); await loadAdmin(); } catch (e) { say('Erreur : ' + e.message); }
+}
+
+function renderPaired(list) {
+  const root = document.getElementById('paired');
+  root.replaceChildren();
+  if (!list.length) root.append(el('p', 'muted small', 'Aucune machine associée.'));
+  for (const m of list) {
+    const row = el('div', 'prow');
+    const dot = el('div', 'dot ' + (m.online ? 'working' : 'idle'));
+    dot.title = m.online ? 'en ligne' : 'hors ligne';
+    const kind = el('span', 'muted', m.kind === 'server' ? 'serveur' : 'machine');
+    const rename = el('button', '', 'Renommer');
+    rename.type = 'button';
+    rename.addEventListener('click', () => {
+      const nu = prompt('Nouveau nom pour « ' + m.name + ' » :', m.name);
+      if (nu && nu.trim() && nu.trim() !== m.name) act(() => post('v1/admin/rename', { old: m.name, new: nu.trim() }), 'Renommée.');
+    });
+    row.append(dot, el('div', 'name', m.name), kind, rename);
+    if (m.kind !== 'server') {
+      const revoke = el('button', 'danger', 'Révoquer');
+      revoke.type = 'button';
+      revoke.addEventListener('click', () => {
+        if (confirm('Révoquer « ' + m.name + ' » ? Elle ne pourra plus envoyer ses sessions avant d\'être associée à nouveau.'))
+          act(() => post('v1/admin/revoke', { name: m.name }), 'Révoquée.');
+      });
+      row.append(revoke);
+    }
+    root.append(row);
+  }
+}
+
+async function loadAdmin() {
+  try {
+    const r = await fetch('v1/admin', { cache: 'no-store' });
+    if (!r.ok) return;
+    const a = await r.json();
+    document.getElementById('show-titles').checked = a.show_titles;
+    document.getElementById('sleep-after').value = a.sleep_after;
+    renderPaired(a.machines || []);
+  } catch (_) {}
+}
+
+document.getElementById('show-titles').addEventListener('change', (e) =>
+  act(() => post('v1/admin/settings', { show_titles: e.target.checked }), 'Enregistré.'));
+document.getElementById('sleep-after').addEventListener('change', (e) =>
+  act(() => post('v1/admin/settings', { sleep_after: e.target.value }), 'Enregistré.'));
+loadAdmin();
+setInterval(loadAdmin, 15000);

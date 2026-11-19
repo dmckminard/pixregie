@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 //go:embed web
@@ -38,6 +39,9 @@ type Server struct {
 	Log   *log.Logger
 	// Extra GET routes served behind the debug password (e.g. /screen.png).
 	Extra map[string]http.Handler
+	// AdminPost are POST routes behind the debug password that change the
+	// configuration; they also require a same-origin request (see admin).
+	AdminPost map[string]http.Handler
 	// Pairer enables pairing by code shown on the screen; nil disables it.
 	Pairer *Pairer
 	// SaveAgent persists a newly paired agent (token hash, label).
@@ -47,6 +51,35 @@ type Server struct {
 	BoardID string
 
 	mu sync.RWMutex // guards Auth.AgentTokens, which pairing extends
+
+	failMu   sync.Mutex
+	failures []time.Time // recent wrong debug passwords
+}
+
+// Password guessing is limited: after 10 wrong passwords in 10 minutes the
+// page refuses every attempt until older failures expire.
+const (
+	maxFailures = 10
+	failureSpan = 10 * time.Minute
+)
+
+func (s *Server) lockedOut(now time.Time) bool {
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	kept := s.failures[:0]
+	for _, t := range s.failures {
+		if now.Sub(t) < failureSpan {
+			kept = append(kept, t)
+		}
+	}
+	s.failures = kept
+	return len(s.failures) >= maxFailures
+}
+
+func (s *Server) recordFailure(now time.Time) {
+	s.failMu.Lock()
+	s.failures = append(s.failures, now)
+	s.failMu.Unlock()
 }
 
 func (s *Server) Handler() http.Handler {
@@ -62,6 +95,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/state", s.debugOnly(http.HandlerFunc(s.state)))
 	for path, h := range s.Extra {
 		mux.Handle("GET "+path, s.debugOnly(h))
+	}
+	for path, h := range s.AdminPost {
+		mux.Handle("POST "+path, s.debugOnly(sameOrigin(h)))
 	}
 	static, _ := fs.Sub(webFS, "web")
 	mux.Handle("GET /", s.debugOnly(http.FileServerFS(static)))
@@ -116,10 +152,37 @@ func (s *Server) debugOnly(next http.Handler) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		now := time.Now()
+		if s.lockedOut(now) {
+			http.Error(w, "too many wrong passwords, try again later", http.StatusTooManyRequests)
+			return
+		}
 		_, pw, ok := r.BasicAuth()
-		if !ok || !CheckPassword(s.Auth.DebugPassword, pw) {
+		if ok && !CheckPassword(s.Auth.DebugPassword, pw) {
+			s.recordFailure(now)
+			ok = false
+		}
+		if !ok {
 			w.Header().Set("WWW-Authenticate", `Basic realm="pixregie"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// sameOrigin blocks cross-site requests: the browser keeps sending the
+// debug password, so another site could otherwise post to the Pi. A
+// custom header cannot be added cross-site without a CORS preflight, which
+// is never answered; the Origin, when sent, must be this host.
+func sameOrigin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Pixregie") != "1" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if o := r.Header.Get("Origin"); o != "" && o != "http://"+r.Host && o != "https://"+r.Host {
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)

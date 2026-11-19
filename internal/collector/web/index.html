@@ -13,6 +13,23 @@
 </header>
 <figure id="screen"><img id="shot" alt="Écran du Pi" width="1280" height="720"></figure>
 <main id="machines"><p class="muted">Chargement…</p></main>
+<section id="admin">
+  <h2><span>Réglages</span><span id="admin-msg" class="muted" role="status"></span></h2>
+  <div class="form">
+    <label class="check"><input type="checkbox" id="show-titles"> Afficher les titres de session</label>
+    <label>Mise en veille de l'écran sans activité
+      <select id="sleep-after">
+        <option value="10m">10 min</option><option value="30m">30 min</option>
+        <option value="1h">1 h</option><option value="2h">2 h</option>
+        <option value="4h">4 h</option><option value="0">jamais</option>
+      </select>
+    </label>
+  </div>
+  <h3>Machines associées</h3>
+  <div id="paired"></div>
+  <p class="muted small">Ajouter une machine : lance l'app Pixregie dessus, un code s'affiche sur l'écran.
+  Ajouter ou retirer un serveur : <code>sudo bash install-pi.sh --add-server</code> / <code>--remove-server</code> sur le Pi.</p>
+</section>
 <footer><span id="updated" class="muted"></span></footer>
 <script src="app.js"></script>
 </body>

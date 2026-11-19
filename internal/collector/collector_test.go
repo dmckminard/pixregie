@@ -141,3 +141,50 @@ func TestRetainAndSetAgents(t *testing.T) {
 		t.Fatalf("revoked token still accepted: %d", w.Code)
 	}
 }
+
+func TestAdminPostNeedsSameOrigin(t *testing.T) {
+	called := 0
+	s := &Server{
+		Store: NewStore(time.Minute, time.Hour),
+		Auth:  Auth{DebugPassword: mustHash("pw")},
+		AdminPost: map[string]http.Handler{"/v1/admin/x": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called++
+		})},
+	}
+	h := s.Handler()
+	try := func(hdr map[string]string) int {
+		r := httptest.NewRequest("POST", "http://pi:7421/v1/admin/x", strings.NewReader("{}"))
+		r.SetBasicAuth("x", "pw")
+		for k, v := range hdr {
+			r.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	if try(nil) != 403 || try(map[string]string{"X-Pixregie": "1", "Origin": "https://evil.example"}) != 403 {
+		t.Fatal("cross-site request accepted")
+	}
+	if try(map[string]string{"X-Pixregie": "1", "Origin": "http://pi:7421"}) != 200 || called != 1 {
+		t.Fatal("same-origin request refused")
+	}
+}
+
+func TestPasswordLockout(t *testing.T) {
+	_, h := newTestServer()
+	code := func(pw string) int {
+		r := httptest.NewRequest("GET", "/v1/state", nil)
+		r.SetBasicAuth("x", pw)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	for i := 0; i < maxFailures; i++ {
+		if code("wrong") != 401 {
+			t.Fatal("wrong password not refused")
+		}
+	}
+	if code("pw") != 429 {
+		t.Fatal("no lockout after repeated failures")
+	}
+}

@@ -219,8 +219,8 @@ Pairing is kept across updates.
   session names or reuse a token to show fake sessions (nothing more:
   tokens give no access to your machines). Prefer a network you control.
 - **Session titles** come from your conversations. If others can see the
-  screen, hide them: `"show_titles": false` in `/etc/pixregie/display.json`
-  (applied within seconds).
+  screen, hide them from the Pi's page (or `"show_titles": false` in
+  `/etc/pixregie/display.json`).
 - **Several boards on one network** are fine: each machine reports only to
   the board it paired with.
 - **Releases are signed by this repository's key.** If you fork Pixregie
@@ -238,8 +238,17 @@ Pairing is kept across updates.
 | Black borders on the Pi's screen         | Reboot once after installing.                                       |
 | A server's room never appears            | On the Pi: `journalctl -u 'pixregie-tunnel@*' -n 20`; on the server: `journalctl -u pixregie-agent -n 20`. |
 
-The debug page (`http://<pi-address>:7421`, any user name and your
-password) shows the live screen and what each machine reports.
+## The Pi's page
+
+`http://<pi-address>:7421` (any user name, your password) shows the live
+screen and what each machine reports, and lets you change settings (session
+titles, screen sleep) and rename or revoke paired machines. Changes apply
+at once. Servers are added and removed from the Pi's shell, since that
+sets up an SSH tunnel.
+
+Changes require the password *and* a same-origin request, so another web
+page open in your browser cannot change anything. After 10 wrong passwords
+in 10 minutes the page refuses all attempts for a while.
 
 ## Security
 
