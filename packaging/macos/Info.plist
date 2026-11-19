@@ -12,6 +12,11 @@
   <key>CFBundleVersion</key><string>__VERSION__</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>LSUIElement</key><true/>
+  <!-- macOS 15+ blocks local-network traffic (mDNS discovery and the HTTP
+       reports to the Pi) until the user allows it; these keys make macOS
+       ask instead of silently dropping it. -->
+  <key>NSLocalNetworkUsageDescription</key><string>Pixregie envoie l'état de tes sessions Claude Code à l'écran Pixregie de ton réseau local.</string>
+  <key>NSBonjourServices</key><array><string>_pixregie._tcp</string></array>
   <key>NSHumanReadableCopyright</key><string>MIT · not affiliated with Anthropic</string>
 </dict>
 </plist>
