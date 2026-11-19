@@ -132,14 +132,11 @@ func (a *Agent) Run(ctx context.Context) {
 
 func (a *Agent) tick(ctx context.Context, lastDiscovery *time.Time) {
 	now := time.Now()
-	list, err := session.Scan(a.cfg.Root, 24*time.Hour, session.Options{
-		Machine: a.host, StaleAfter: 10 * time.Minute, Now: now,
-	})
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	list, err := a.Snapshot(now)
+	if err != nil {
 		a.set(false, "", "lecture des sessions : "+err.Error(), nil)
 		return
 	}
-	list = filter(a.cfg.Tracker.Apply(list), now)
 
 	counts := map[session.Status]int{}
 	for _, s := range list {
@@ -178,6 +175,17 @@ func (a *Agent) tick(ctx context.Context, lastDiscovery *time.Time) {
 		return
 	}
 	a.set(true, server, "", counts)
+}
+
+// Snapshot scans the transcripts and returns what the board should show.
+func (a *Agent) Snapshot(now time.Time) ([]session.Session, error) {
+	list, err := session.Scan(a.cfg.Root, 24*time.Hour, session.Options{
+		Machine: a.host, StaleAfter: 10 * time.Minute, Now: now,
+	})
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	return filter(a.cfg.Tracker.Apply(list), now), nil
 }
 
 // filter keeps what is worth showing: open sessions, anything not idle,

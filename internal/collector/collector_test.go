@@ -126,3 +126,18 @@ func TestPassword(t *testing.T) {
 		t.Fatal("password check")
 	}
 }
+
+func TestRetainAndSetAgents(t *testing.T) {
+	s, h := newTestServer()
+	s.Store.Put("mac", Report{})
+	s.Store.Put("old", Report{})
+	s.Store.Retain(map[string]bool{"mac": true})
+	if m := s.Store.Snapshot().Machines; len(m) != 1 || m[0].Name != "mac" {
+		t.Fatalf("%+v", m)
+	}
+	s.SetAgents(map[string]string{})
+	body := `{"sessions":[]}`
+	if w := do(h, "POST", "/v1/report", body, map[string]string{"Authorization": "Bearer tok-mac"}); w.Code != 401 {
+		t.Fatalf("revoked token still accepted: %d", w.Code)
+	}
+}

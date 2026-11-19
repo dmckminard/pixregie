@@ -1,11 +1,11 @@
 // pixregie-display runs on the Raspberry Pi: it collects session snapshots
-// from the agents and serves the debug page. The pixel-art screen comes next.
+// from the agents (pushed over the LAN, or pulled from servers through SSH
+// tunnels), draws the pixel-art board and serves the debug page.
 package main
 
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
@@ -23,15 +22,6 @@ import (
 )
 
 var version = "dev"
-
-const defaultConfig = "/etc/pixregie/display.json"
-
-// Config is stored with mode 0600. It holds hashes only, never raw secrets.
-type Config struct {
-	Listen        string            `json:"listen"`
-	Agents        map[string]string `json:"agents"`         // sha256(token) -> machine label
-	DebugPassword string            `json:"debug_password"` // pbkdf2 hash; empty = page off
-}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -44,6 +34,16 @@ func main() {
 		serve(args)
 	case "add-agent":
 		addAgent(args)
+	case "agents":
+		listAgents(args)
+	case "remove-agent":
+		removeAgent(args)
+	case "rename-agent":
+		renameAgent(args)
+	case "add-server":
+		addServer(args)
+	case "remove-server":
+		removeServer(args)
 	case "set-password":
 		setPassword(args)
 	case "render":
@@ -60,6 +60,11 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   pixregie-display serve        [-config FILE]
   pixregie-display add-agent    [-config FILE] LABEL   (prints a new token once)
+  pixregie-display agents       [-config FILE]         (paired machines)
+  pixregie-display remove-agent [-config FILE] LABEL   (revoke a machine)
+  pixregie-display rename-agent [-config FILE] OLD NEW
+  pixregie-display add-server   [-config FILE] LABEL URL   (token read on stdin)
+  pixregie-display remove-server [-config FILE] LABEL
   pixregie-display set-password [-config FILE]         (reads the password on stdin)
   pixregie-display render       -o FILE.png [-night]    (demo picture, no Pi needed)
   pixregie-display version`)
@@ -110,6 +115,16 @@ func serve(args []string) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	painter.sleepAfter = cfg.sleepAfter()
+	puller := newPuller(store, logger)
+	puller.set(cfg.Servers)
+	go puller.run(ctx)
+	go watchConfig(ctx, *path, logger, func(c Config) {
+		srv.SetAgents(c.Agents)
+		puller.set(c.Servers)
+		store.Retain(c.labels())
+		painter.setSleepAfter(c.sleepAfter())
+	})
 	go painter.run(ctx)
 	go func() {
 		<-ctx.Done()
@@ -117,8 +132,8 @@ func serve(args []string) {
 		defer cancel()
 		hs.Shutdown(sctx)
 	}()
-	logger.Printf("pixregie-display %s listening on %s (%d agents, debug page %s)",
-		version, cfg.Listen, len(cfg.Agents), onOff(cfg.DebugPassword != ""))
+	logger.Printf("pixregie-display %s listening on %s (%d agents, %d servers, debug page %s)",
+		version, cfg.Listen, len(cfg.Agents), len(cfg.Servers), onOff(cfg.DebugPassword != ""))
 	if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
@@ -147,7 +162,6 @@ func addAgent(args []string) {
 		log.Fatal(err)
 	}
 	fmt.Printf("Agent %q added. Token (shown once, copy it now):\n%s\n", label, tok)
-	fmt.Println("Restart the service to apply: sudo systemctl restart pixregie-display")
 }
 
 func setPassword(args []string) {
@@ -170,48 +184,7 @@ func setPassword(args []string) {
 	if err := save(*path, cfg); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Fprintln(os.Stderr, "Saved. Restart the service to apply.")
-}
-
-func load(path string) (Config, error) {
-	cfg := Config{Listen: ":7421", Agents: map[string]string{}}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return cfg, err
-	}
-	if err := json.Unmarshal(b, &cfg); err != nil {
-		return cfg, fmt.Errorf("%s: %w", path, err)
-	}
-	if cfg.Agents == nil {
-		cfg.Agents = map[string]string{}
-	}
-	return cfg, nil
-}
-
-// save writes atomically with mode 0600.
-func save(path string, cfg Config) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
-	b, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".display-*.json")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if err := tmp.Chmod(0o600); err != nil {
-		return err
-	}
-	if _, err := tmp.Write(append(b, '\n')); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	fmt.Fprintln(os.Stderr, "Saved.")
 }
 
 func onOff(b bool) string {

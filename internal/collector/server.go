@@ -84,6 +84,13 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(s.Store.Snapshot())
 }
 
+// SetAgents replaces the accepted agent tokens (config reloaded on disk).
+func (s *Server) SetAgents(agents map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Auth.AgentTokens = agents
+}
+
 // agent resolves a bearer token to its machine label.
 func (s *Server) agent(r *http.Request) (string, bool) {
 	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")

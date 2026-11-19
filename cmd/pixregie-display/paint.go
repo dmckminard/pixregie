@@ -15,6 +15,7 @@ import (
 	"github.com/dmckminard/pixregie/internal/collector"
 	"github.com/dmckminard/pixregie/internal/fb"
 	"github.com/dmckminard/pixregie/internal/screen"
+	"github.com/dmckminard/pixregie/internal/session"
 )
 
 // frameEvery paces the two-frame animations (screens, bubbles, blinking).
@@ -28,9 +29,41 @@ type painter struct {
 	fbDev  string
 	log    *log.Logger
 
-	mu   sync.Mutex
-	last *image.RGBA
+	mu         sync.Mutex
+	last       *image.RGBA
+	sleepAfter time.Duration // 0: never sleep
 }
+
+func (p *painter) setSleepAfter(d time.Duration) {
+	p.mu.Lock()
+	p.sleepAfter = d
+	p.mu.Unlock()
+}
+
+// active reports whether the board has something to say: a session that
+// works, waits or is stuck, or a pairing in progress.
+func active(st collector.State, pairing bool) bool {
+	if pairing {
+		return true
+	}
+	for _, m := range st.Machines {
+		if !m.Online {
+			continue
+		}
+		for _, s := range m.Sessions {
+			if s.Status != session.Idle {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// shiftEvery moves the picture by a couple of pixels now and then, so
+// static parts (header, walls) do not mark the panel.
+const shiftEvery = 10 * time.Minute
+
+var shifts = [][2]int{{0, 0}, {2, 0}, {2, 2}, {0, 2}}
 
 func (p *painter) run(ctx context.Context) {
 	var dev *fb.Device
@@ -54,21 +87,41 @@ func (p *painter) run(ctx context.Context) {
 	host, _ := os.Hostname()
 	t := time.NewTicker(frameEvery)
 	defer t.Stop()
+	lastActive := time.Now()
+	asleep := false
 	for frame := 0; ; frame++ {
 		now := time.Now()
 		opt := screen.Options{Frame: frame, Night: isNight(now), Now: now, Host: host + ".local", Scale: scale}
-		if req, ok := p.pairer.Pending(); ok {
+		req, pairing := p.pairer.Pending()
+		if pairing {
 			opt.Pair = &req
 		}
-		img := screen.Render(p.store.Snapshot(), opt)
+		st := p.store.Snapshot()
+		img := screen.Render(st, opt)
 		p.mu.Lock()
 		p.last = img
+		sleepAfter := p.sleepAfter
 		p.mu.Unlock()
+
+		if active(st, pairing) {
+			lastActive = now
+		}
+		sleep := sleepAfter > 0 && now.Sub(lastActive) > sleepAfter
 		if dev != nil {
-			if err := dev.Show(img); err != nil {
-				p.log.Printf("framebuffer: %v", err)
+			if sleep != asleep {
+				if err := dev.Blank(sleep); err != nil {
+					p.log.Printf("screen %s: %v", map[bool]string{true: "sleep", false: "wake"}[sleep], err)
+				}
+				p.log.Printf("screen %s", map[bool]string{true: "asleep", false: "awake"}[sleep])
+			}
+			if !sleep {
+				sh := shifts[int(now.Unix()/int64(shiftEvery.Seconds()))%len(shifts)]
+				if err := dev.Show(img, sh[0], sh[1]); err != nil {
+					p.log.Printf("framebuffer: %v", err)
+				}
 			}
 		}
+		asleep = sleep
 		select {
 		case <-ctx.Done():
 			return

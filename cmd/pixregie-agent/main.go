@@ -22,6 +22,8 @@ func main() {
 		scan(os.Args[2:])
 	case "run":
 		run(os.Args[2:])
+	case "serve":
+		serve(os.Args[2:])
 	case "pair":
 		pair(os.Args[2:])
 	case "hooks":
@@ -45,6 +47,7 @@ func usage() {
   pixregie-agent                    menu-bar app (macOS, Windows)
   pixregie-agent run [-server URL]  report in the background (display found with mDNS by default)
   pixregie-agent pair [-token]      pair with the code shown on the Pi's screen
+  pixregie-agent serve              server mode: the Pi pulls through an SSH tunnel
   pixregie-agent hooks install|uninstall|status
   pixregie-agent scan [-json]       print what the agent sees, send nothing
   pixregie-agent version`)

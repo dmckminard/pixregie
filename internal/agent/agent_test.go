@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -71,5 +72,31 @@ func TestFilterDropsOldIdle(t *testing.T) {
 	}
 	if out := filter(in, now); len(out) != 2 || out[0].ID != "old-open" {
 		t.Fatalf("%+v", out)
+	}
+}
+
+func TestServeHandler(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "-p"), 0o700)
+	os.WriteFile(filepath.Join(root, "-p", "s1.jsonl"),
+		[]byte(`{"type":"user","cwd":"/srv/data-sync","message":{"content":"SECRET"}}`+"\n"), 0o600)
+	a, _ := New(Config{Root: root, Token: "unused"})
+	h := ServeHandler(a, "pxs_right")
+	for tok, want := range map[string]int{"": 401, "pxs_wrong": 401, "pxs_right": 200} {
+		r := httptest.NewRequest("GET", "/v1/snapshot", nil)
+		r.Header.Set("Authorization", "Bearer "+tok)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("token %q: %d", tok, w.Code)
+		}
+		if want == 200 && (!strings.Contains(w.Body.String(), `"project":"data-sync"`) || strings.Contains(w.Body.String(), "SECRET")) {
+			t.Fatalf("body %s", w.Body)
+		}
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/v1/snapshot", nil))
+	if w.Code != 405 {
+		t.Fatalf("POST: %d", w.Code)
 	}
 }

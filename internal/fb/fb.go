@@ -15,6 +15,7 @@ import (
 
 type Device struct {
 	f         *os.File
+	sys       string // /sys/class/graphics/fbN
 	W, H, BPP int
 	stride    int
 	buf       []byte
@@ -51,7 +52,7 @@ func Open(dev string) (*Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Device{f: f, W: w, H: h, BPP: bpp, stride: stride, buf: make([]byte, stride*h)}, nil
+	return &Device{f: f, sys: sys, W: w, H: h, BPP: bpp, stride: stride, buf: make([]byte, stride*h)}, nil
 }
 
 func readSys(dir, name string) (string, error) {
@@ -61,9 +62,26 @@ func readSys(dir, name string) (string, error) {
 
 func (d *Device) Close() error { return d.f.Close() }
 
+// Blank turns the panel off (or back on) through the framebuffer's blank
+// control, which puts the monitor in standby. If that is not permitted,
+// the screen is painted black instead.
+func (d *Device) Blank(on bool) error {
+	v := "0"
+	if on {
+		v = "1"
+	}
+	err := os.WriteFile(filepath.Join(d.sys, "blank"), []byte(v), 0)
+	if err != nil && on {
+		clear(d.buf)
+		d.f.WriteAt(d.buf, 0)
+	}
+	return err
+}
+
 // Show scales src to the screen with nearest-neighbour (integer factor when
-// possible, letterboxed in black) and writes it in one pwrite.
-func (d *Device) Show(src *image.RGBA) error {
+// possible, letterboxed in black), moves it by (dx, dy) pixels and writes
+// it in one pwrite.
+func (d *Device) Show(src *image.RGBA, dx, dy int) error {
 	sw, sh := src.Bounds().Dx(), src.Bounds().Dy()
 	// Largest scale that fits, integer if >= 1 so pixels stay square.
 	scale := float64(d.W) / float64(sw)
@@ -74,13 +92,19 @@ func (d *Device) Show(src *image.RGBA) error {
 		scale = float64(int(scale))
 	}
 	dw, dh := int(float64(sw)*scale), int(float64(sh)*scale)
-	ox, oy := (d.W-dw)/2, (d.H-dh)/2
+	ox, oy := (d.W-dw)/2+dx, (d.H-dh)/2+dy
 
 	clear(d.buf)
 	for y := 0; y < dh; y++ {
+		if oy+y < 0 || oy+y >= d.H {
+			continue
+		}
 		sy := int(float64(y) / scale)
 		row := d.buf[(oy+y)*d.stride:]
 		for x := 0; x < dw; x++ {
+			if ox+x < 0 || ox+x >= d.W {
+				continue
+			}
 			sx := int(float64(x) / scale)
 			i := src.PixOffset(sx, sy)
 			r, g, b := src.Pix[i], src.Pix[i+1], src.Pix[i+2]

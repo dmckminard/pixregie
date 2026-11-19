@@ -97,6 +97,18 @@ func (s *Store) Put(machine string, r Report) {
 	s.mu.Unlock()
 }
 
+// Retain drops machines whose label is not in keep (revoked or renamed),
+// so they leave the screen at once instead of fading out after a day.
+func (s *Store) Retain(keep map[string]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for name := range s.machines {
+		if !keep[name] {
+			delete(s.machines, name)
+		}
+	}
+}
+
 // Changed returns a channel closed at the next Put (for live renderers).
 func (s *Store) Changed() <-chan struct{} {
 	s.mu.Lock()
