@@ -43,7 +43,7 @@ func iconFor(st session.Status) []byte {
 	if darkMenuBar() {
 		outline = color.RGBA{0xe8, 0xe4, 0xf4, 0xff}
 	}
-	return platformIcon(icon.PNG(st, 2, outline))
+	return platformIcon(icon.Image(st, 2, outline))
 }
 
 func onReady() {

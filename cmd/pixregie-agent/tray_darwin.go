@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"image"
+	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,7 +12,11 @@ import (
 	"text/template"
 )
 
-func platformIcon(png []byte) []byte { return png }
+func platformIcon(img *image.RGBA) []byte {
+	var b bytes.Buffer
+	png.Encode(&b, img)
+	return b.Bytes()
+}
 
 func darkMenuBar() bool {
 	out, err := exec.Command("/usr/bin/defaults", "read", "-g", "AppleInterfaceStyle").Output()

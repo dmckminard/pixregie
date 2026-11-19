@@ -120,18 +120,49 @@ func PNG(st session.Status, scale int, outline color.RGBA) []byte {
 	return b.Bytes()
 }
 
-// ICO wraps a PNG in an .ico container (Windows Vista+ reads PNG entries),
-// which is what the Windows tray API expects.
-func ICO(pngData []byte, size int) []byte {
-	var b bytes.Buffer
-	binary.Write(&b, binary.LittleEndian, []uint16{0, 1, 1}) // reserved, type icon, count
-	dim := byte(size)
-	if size >= 256 {
-		dim = 0
+// ICO encodes img as a Windows .ico with one classic 32-bit BGRA bitmap
+// entry (plus the 1-bit AND mask). PNG-compressed entries are only read
+// reliably at 256 px; small tray icons must be bitmaps.
+func ICO(img *image.RGBA) []byte {
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	maskStride := ((w + 31) / 32) * 4
+	var dib bytes.Buffer
+	// BITMAPINFOHEADER: height counts the colour rows and the mask rows.
+	binary.Write(&dib, binary.LittleEndian, struct {
+		Size                   uint32
+		Width, Height          int32
+		Planes, BitCount       uint16
+		Compression, SizeImage uint32
+		XPels, YPels           int32
+		ClrUsed, ClrImportant  uint32
+	}{40, int32(w), int32(2 * h), 1, 32, 0, uint32(w*h*4 + maskStride*h), 0, 0, 0, 0})
+	for y := h - 1; y >= 0; y-- { // bottom-up
+		for x := 0; x < w; x++ {
+			c := img.RGBAAt(img.Rect.Min.X+x, img.Rect.Min.Y+y)
+			dib.Write([]byte{c.B, c.G, c.R, c.A})
+		}
 	}
-	b.Write([]byte{dim, dim, 0, 0})
+	for y := h - 1; y >= 0; y-- {
+		row := make([]byte, maskStride)
+		for x := 0; x < w; x++ {
+			if img.RGBAAt(img.Rect.Min.X+x, img.Rect.Min.Y+y).A == 0 {
+				row[x/8] |= 0x80 >> (x % 8)
+			}
+		}
+		dib.Write(row)
+	}
+
+	var b bytes.Buffer
+	binary.Write(&b, binary.LittleEndian, []uint16{0, 1, 1}) // reserved, icon, 1 image
+	dim := func(n int) byte {
+		if n >= 256 {
+			return 0
+		}
+		return byte(n)
+	}
+	b.Write([]byte{dim(w), dim(h), 0, 0})
 	binary.Write(&b, binary.LittleEndian, []uint16{1, 32})
-	binary.Write(&b, binary.LittleEndian, []uint32{uint32(len(pngData)), 6 + 16})
-	b.Write(pngData)
+	binary.Write(&b, binary.LittleEndian, []uint32{uint32(dib.Len()), 6 + 16})
+	b.Write(dib.Bytes())
 	return b.Bytes()
 }

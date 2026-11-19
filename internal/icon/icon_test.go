@@ -18,9 +18,11 @@ func TestIcons(t *testing.T) {
 		if err != nil || img.Bounds().Dx() != 32 {
 			t.Fatalf("%s: %v", st, err)
 		}
-		ico := ICO(p, 32)
-		if binary.LittleEndian.Uint16(ico[2:]) != 1 || !bytes.Equal(ico[22:], p) {
-			t.Fatalf("%s: bad ico", st)
+		ico := ICO(Image(st, 2, white))
+		// header(6) + entry(16) + BITMAPINFOHEADER(40) + 32*32*4 + mask 4*32
+		if binary.LittleEndian.Uint16(ico[2:]) != 1 || len(ico) != 6+16+40+4096+128 ||
+			binary.LittleEndian.Uint32(ico[22:]) != 40 || int32(binary.LittleEndian.Uint32(ico[30:])) != 64 {
+			t.Fatalf("%s: bad ico (%d bytes)", st, len(ico))
 		}
 	}
 	// Screen colour follows the state.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image"
 	"os"
 	"os/exec"
 	"strings"
@@ -9,7 +10,7 @@ import (
 	"github.com/dmckminard/pixregie/internal/icon"
 )
 
-func platformIcon(png []byte) []byte { return icon.ICO(png, 32) }
+func platformIcon(img *image.RGBA) []byte { return icon.ICO(img) }
 
 // hidden runs a console helper (reg, rundll32) without flashing a window.
 func hidden(name string, args ...string) *exec.Cmd {
