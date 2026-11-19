@@ -159,10 +159,12 @@ add_server() {
   chmod 0640 "$TUN_DIR/id_ed25519"
 
   echo
-  say "1/3 On the server ($host), run as an admin (replace USER by the account running Claude Code):"
+  say "1/3 On the server ($host), logged in as the account that runs Claude Code, run:"
   echo
   echo "  curl -fsSLO https://github.com/$REPO/releases/latest/download/install-server.sh"
-  echo "  sudo bash install-server.sh --user USER --pi-key '$(cat "$TUN_DIR/id_ed25519.pub")'"
+  echo "  sudo bash install-server.sh --pi-key '$(cat "$TUN_DIR/id_ed25519.pub")'"
+  echo
+  say "    (for another account's sessions, add --user NAME)"
   echo
   say "2/3 It prints a server token (pxs_…)."
   token="$(ask "    Paste it here:")"

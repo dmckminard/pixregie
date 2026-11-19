@@ -190,7 +190,7 @@ Pairing is kept across updates.
 
 - **Pi**: `sudo bash install-pi.sh --uninstall` (keeps `/etc/pixregie`;
   delete it to forget passwords, paired machines and the tunnel key).
-- **Server**: `sudo bash install-server.sh --user USER --uninstall`, then on
+- **Server**: `sudo bash install-server.sh --uninstall`, then on
   the Pi `--remove-server NAME`.
 - **macOS**:
   ```sh

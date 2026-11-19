@@ -6,7 +6,7 @@
 # (sudo bash install-pi.sh --add-server NAME user@host):
 #
 #   curl -fsSLO https://github.com/dmckminard/pixregie/releases/latest/download/install-server.sh
-#   sudo bash install-server.sh --user USER --pi-key 'ssh-ed25519 AAAA… pixregie-tunnel@pi'
+#   sudo bash install-server.sh [--user USER] --pi-key 'ssh-ed25519 AAAA… pixregie-tunnel@pi'
 #   sudo bash install-server.sh --uninstall
 #
 # What it sets up, and nothing more:
