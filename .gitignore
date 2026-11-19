@@ -1,0 +1,18 @@
+# Build output
+/dist/
+/bin/
+*.exe
+
+# Local configuration and secrets: never commit
+*.env
+.env*
+config.local.*
+*.token
+*.key
+*.pem
+id_ed25519*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
