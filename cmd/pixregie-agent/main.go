@@ -1,7 +1,7 @@
 // pixregie-agent watches local Claude Code sessions and reports their status.
 //
-// Current stage: `pixregie-agent scan` prints the sessions seen on this
-// machine. Reporting to the display and the tray icon come next.
+// `scan` prints the sessions seen on this machine; `run` reports them to the
+// display every few seconds. The tray icon and mDNS discovery come next.
 package main
 
 import (
@@ -25,6 +25,8 @@ func main() {
 	switch os.Args[1] {
 	case "scan":
 		scan(os.Args[2:])
+	case "run":
+		run(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("pixregie-agent", version)
 	default:
@@ -35,6 +37,7 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage: pixregie-agent scan [-json] [-within 24h] [-root DIR]
+       pixregie-agent run -server http://pixregie.local:7421   (token in $PIXREGIE_TOKEN)
        pixregie-agent version`)
 }
 
