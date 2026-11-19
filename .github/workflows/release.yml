@@ -1,0 +1,37 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -eu
+          v="${GITHUB_REF_NAME}"
+          mkdir dist
+          build() { # cmd os arch [goarm]
+            out="dist/$1-$2-$3"; [ "$2" = windows ] && out="$out.exe"
+            GOOS=$2 GOARCH=$3 GOARM=${4:-} go build -trimpath -ldflags "-s -w -X main.version=$v" -o "$out" "./cmd/$1"
+          }
+          build pixregie-display linux arm64
+          build pixregie-display linux arm 6
+          for os_arch in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64; do
+            build pixregie-agent "${os_arch%/*}" "${os_arch#*/}"
+          done
+          cp install/pi/install.sh dist/install-pi.sh
+          (cd dist && sha256sum * > SHA256SUMS)
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
