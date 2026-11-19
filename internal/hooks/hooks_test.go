@@ -148,3 +148,15 @@ func TestInstallCreatesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestBindIsExclusive(t *testing.T) {
+	ln, err := Bind()
+	if err != nil {
+		t.Skipf("port busy on this machine: %v", err)
+	}
+	defer ln.Close()
+	if ln2, err := Bind(); err == nil {
+		ln2.Close()
+		t.Fatal("a second instance could bind the hook port")
+	}
+}

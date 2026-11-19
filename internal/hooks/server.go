@@ -12,14 +12,25 @@ import (
 // Port is where the agent listens for hook events, on 127.0.0.1 only.
 const Port = 7422
 
-// Listen serves POST /hook on 127.0.0.1:Port until the listener fails.
+// Bind takes the hook port on 127.0.0.1. Holding it for the life of the
+// process also makes it a single-instance lock.
+func Bind() (net.Listener, error) {
+	return net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(Port)))
+}
+
+// Listen binds and serves POST /hook until the listener fails.
 // The endpoint only ever changes what the board shows; it cannot reach
 // anything else.
 func Listen(t *Tracker) error {
-	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(Port)))
+	ln, err := Bind()
 	if err != nil {
 		return err
 	}
+	return Serve(ln, t)
+}
+
+// Serve serves the hook endpoint on an already bound listener.
+func Serve(ln net.Listener, t *Tracker) error {
 	srv := &http.Server{
 		Handler:           Handler(t),
 		ReadHeaderTimeout: 2 * time.Second,
@@ -27,7 +38,7 @@ func Listen(t *Tracker) error {
 		WriteTimeout:      2 * time.Second,
 		MaxHeaderBytes:    8 << 10,
 	}
-	err = srv.Serve(ln)
+	err := srv.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

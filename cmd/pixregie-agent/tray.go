@@ -10,7 +10,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"time"
 
 	"fyne.io/systray"
@@ -26,14 +25,18 @@ import (
 const hooksNote = "Pixregie ajoute aussi 3 hooks à Claude Code pour savoir quelles sessions sont ouvertes. " +
 	"Ils ne transmettent que l'identifiant de session, jamais tes prompts ni ton code."
 
+// hookLn is bound before anything else and held until exit: a second
+// Pixregie cannot start while it is taken (single instance), even if the
+// first one is still waiting on a dialog.
+var hookLn net.Listener
+
 func tray() {
-	// The hook port doubles as a single-instance lock.
-	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(hooks.Port)))
+	ln, err := hooks.Bind()
 	if err != nil {
-		alert("Pixregie est déjà lancé (voir la barre des menus).")
+		alert("Pixregie est déjà lancé : son icône est dans la barre des menus.")
 		return
 	}
-	ln.Close()
+	hookLn = ln
 	systray.Run(onReady, func() {})
 }
 
@@ -112,7 +115,7 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken *systray.MenuItem) 
 	tracker := hooks.NewTracker(statePath)
 	tracker.Prune()
 	go func() {
-		if err := hooks.Listen(tracker); err != nil {
+		if err := hooks.Serve(hookLn, tracker); err != nil {
 			log.Printf("hook listener: %v", err)
 		}
 	}()
