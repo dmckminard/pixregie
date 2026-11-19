@@ -10,7 +10,7 @@ whether it is working, waiting for you, idle or stuck.
 It only watches. It never sends prompts, approves tools or touches your
 Claude account.
 
-> Status: early development. Not usable yet.
+> Status: early development.
 
 ## How it works
 
@@ -43,12 +43,31 @@ Claude account.
 | `idle`    | the turn is over                                |
 | `stale`   | was working, but nothing moved for a long time  |
 
-## Try the agent
+## Install on the Raspberry Pi
 
-Requires Go 1.24+.
+Raspberry Pi OS Lite (64-bit), on the same network as your machines:
 
 ```sh
-go run ./cmd/pixregie-agent scan
+curl -fsSLO https://github.com/dmckminard/pixregie/releases/latest/download/install-pi.sh
+sudo bash install-pi.sh
+```
+
+The script installs a hardened systemd service, sets HDMI to 1280×720,
+asks for the debug page password and prints a token for your first machine.
+Re-run it to upgrade; `--add-agent NAME` creates a token for another machine.
+
+## Run the agent (temporary, before the tray app)
+
+```sh
+PIXREGIE_TOKEN=pxr_... pixregie-agent run -server http://<pi-address>:7421
+```
+
+`pixregie-agent scan` prints what the agent sees, without sending anything.
+
+## Preview the screen without a Pi
+
+```sh
+go run ./cmd/pixregie-display render -o preview.png
 ```
 
 ## License
