@@ -9,6 +9,7 @@ import (
 	"image/color"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/dmckminard/pixregie/internal/discover"
 	"github.com/dmckminard/pixregie/internal/hooks"
 	"github.com/dmckminard/pixregie/internal/icon"
+	"github.com/dmckminard/pixregie/internal/release"
 	"github.com/dmckminard/pixregie/internal/session"
 )
 
@@ -31,7 +33,17 @@ const hooksNote = "Pixregie ajoute aussi 3 hooks à Claude Code pour savoir quel
 var hookLn net.Listener
 
 func tray() {
-	ln, err := hooks.Bind()
+	cleanupOldUpdate()
+	// After an update the new copy starts while the old one is still
+	// quitting: wait a little for the port before declaring a duplicate.
+	var ln net.Listener
+	var err error
+	for i := 0; i < 10; i++ {
+		if ln, err = hooks.Bind(); err == nil {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 	if err != nil {
 		alert("Pixregie est déjà lancé : son icône est dans la barre des menus.")
 		return
@@ -63,6 +75,8 @@ func onReady() {
 	mLogin := systray.AddMenuItemCheckbox("Lancer au démarrage", "", autostartEnabled())
 	systray.AddSeparator()
 	mToken := systray.AddMenuItem("Associer à nouveau…", "")
+	mUpdate := systray.AddMenuItem("Mettre à jour", "")
+	mUpdate.Hide()
 	mQuit := systray.AddMenuItem("Quitter Pixregie", "")
 	mVersion := systray.AddMenuItem("version "+version, "")
 	mVersion.Disable()
@@ -79,11 +93,11 @@ func onReady() {
 	// Everything else runs off the UI thread: dialogs and the event loop
 	// block.
 	go func() {
-		loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken)
+		loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mUpdate)
 	}()
 }
 
-func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken *systray.MenuItem) {
+func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mUpdate *systray.MenuItem) {
 	cfg, _ := agentcfg.Load()
 	token, err := agentcfg.GetToken()
 
@@ -157,11 +171,36 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken *systray.MenuItem) 
 		systray.SetTooltip("Pixregie · " + line)
 	}
 
+	// Updates: checked shortly after start, then every 6 hours. Installing
+	// is the user's choice, from the menu.
+	updates := make(chan string, 1)
+	go watchUpdates(updates)
+	pending := ""
+
 	// Menu-bar appearance can change (dark mode at sunset): redraw the
 	// icon from time to time even when nothing else changes.
 	tick := time.NewTicker(time.Minute)
 	for {
 		select {
+		case tag := <-updates:
+			pending = tag
+			mUpdate.SetTitle("Mettre à jour vers " + tag)
+			mUpdate.Show()
+		case <-mUpdate.ClickedCh:
+			if pending == "" {
+				continue
+			}
+			mUpdate.SetTitle("Mise à jour en cours…")
+			mUpdate.Disable()
+			if err := installUpdate(pending); err != nil {
+				alert("Mise à jour impossible : " + err.Error())
+				mUpdate.SetTitle("Mettre à jour vers " + pending)
+				mUpdate.Enable()
+				continue
+			}
+			systray.Quit()
+			time.Sleep(time.Second)
+			os.Exit(0)
 		case <-a.Changed():
 			render()
 		case <-tick.C:
@@ -240,6 +279,35 @@ func pairFlow(server string, first bool) (string, bool) {
 		return "", false
 	}
 	return tok, true
+}
+
+func watchUpdates(found chan<- string) {
+	c := &http.Client{Timeout: 30 * time.Second}
+	time.Sleep(time.Minute)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		tag, err := release.Latest(ctx, c)
+		cancel()
+		if err == nil && release.Newer(tag, version) {
+			select {
+			case found <- tag:
+			default:
+			}
+		}
+		time.Sleep(6 * time.Hour)
+	}
+}
+
+// installUpdate downloads the platform asset of tag, which must be listed
+// in a SHA256SUMS signed with the release key, and swaps it in.
+func installUpdate(tag string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	data, err := release.Download(ctx, &http.Client{Timeout: 5 * time.Minute}, tag, updateAsset)
+	if err != nil {
+		return err
+	}
+	return applyUpdate(data)
 }
 
 // askToken shows the platform dialog until a well-formed token is entered

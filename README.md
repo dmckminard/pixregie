@@ -20,7 +20,12 @@ Claude account, and it consumes no tokens.
  │ Pixregie (menu-bar app)  │ ───────────────▶ │ pixregie-display         │
  │  reads ~/.claude/projects│  every 3 s       │  collector + screen      │
  │  + 3 Claude Code hooks   │                  │  + debug page            │
- └──────────────────────────┘                  └──────────────────────────┘
+ └──────────────────────────┘                  └────────────┬─────────────┘
+                                                            │ SSH tunnel opened
+ Server (VPS, VS Code Remote)                               │ by the Pi, can only
+ ┌──────────────────────────┐   read-only, 127.0.0.1 only   │ reach 127.0.0.1:7423
+ │ pixregie-agent serve     │ ◀─────────────────────────────┘
+ └──────────────────────────┘
 ```
 
 - The agent reads Claude Code's local session files and keeps **metadata
@@ -32,8 +37,9 @@ Claude account, and it consumes no tokens.
   travels to the Pi on your local network.
 - Three Claude Code hooks tell the agent when a session opens, closes, or
   waits for a permission. They only carry the session id.
-- The Pi finds nothing by itself: agents find the Pi with mDNS
-  (`_pixregie._tcp`) and push to it with a per-machine token.
+- Machines on your network find the Pi with mDNS (`_pixregie._tcp`) and
+  push to it with a per-machine token. Servers elsewhere cannot reach the
+  Pi, so the Pi pulls from them through an SSH tunnel it opens itself.
 
 ## Statuses
 
@@ -46,7 +52,11 @@ Claude account, and it consumes no tokens.
 
 A room's **ON AIR** light is on while any of its sessions works. Closed
 sessions disappear; idle sessions not known to be open are hidden after an
-hour. Lamps turn on at night (19:00 to 07:00).
+hour. Lamps turn on at night (19:00 to 07:00). After 30 minutes without
+activity the screen goes to sleep, and wakes up as soon as a session works
+or waits (`"sleep_after"` in `/etc/pixregie/display.json`, `"0"` to
+disable). The picture moves by two pixels every ten minutes so that static
+parts do not mark the panel.
 
 ## Install
 
@@ -63,20 +73,29 @@ sudo bash install-pi.sh
 sudo reboot
 ```
 
-The script asks for a password for the debug page, then installs a
-hardened systemd service, announces the board on the network, hides the
-text console and turns on automatic security updates. The picture adapts
-to the screen: native 1080p, 720p, and pixel-perfect upscales for 1440p
-and 4K.
+The script asks for a password for the debug page, then:
+
+- installs a hardened systemd service and announces the board on the
+  network;
+- offers **SSH by key only** (only if your account already has a key, and
+  checked with `sshd -t` first, so it cannot lock you out). From your Mac:
+  `ssh-copy-id you@pi.local`, then `sudo bash install-pi.sh --harden-ssh`;
+- **protects the SD card**: logs in RAM, no swap file, no access-time
+  writes;
+- turns on daily **automatic updates** of Pixregie (signed releases only)
+  and of Debian security fixes.
+
+The picture adapts to the screen: native 1080p, 720p, and pixel-perfect
+upscales for 1440p and 4K.
 
 ### 2. macOS
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dmckminard/pixregie/main/install/mac/install.sh | bash
+curl -fsSL https://github.com/dmckminard/pixregie/releases/latest/download/install-mac.sh | bash
 ```
 
-The script downloads the latest `Pixregie.app`, checks its SHA-256 against
-the release, installs it in Applications and starts it. The app is not
+The script downloads the latest `Pixregie.app`, checks it against the
+release's signed checksums, installs it in Applications and starts it. The app is not
 notarised yet; installed this way macOS does not block it. (Downloading the
 zip with a browser works too, but macOS then asks you to allow it in
 System Settings › Privacy & Security.)
@@ -103,7 +122,23 @@ If the Pi cannot be found (another network, mDNS blocked), the app offers
 to paste a token instead. Create one on the Pi with
 `sudo bash install-pi.sh --add-agent NAME`.
 
-### Linux machines (headless)
+### Servers (VPS, VS Code Remote SSH)
+
+Sessions started on a server, including through VS Code Remote SSH, run
+on the server: they need an agent there. On the Pi:
+
+```sh
+sudo bash install-pi.sh --add-server VPS admin@my-server.example
+```
+
+It prints the command to run on the server, asks for the token the server
+prints back, shows the server's SSH key fingerprint for you to confirm,
+and starts the tunnel. On the server, the installer only adds the agent
+(read-only, localhost only), the hooks for the given user and a
+`pixregie-tunnel` account with no shell whose key may only reach the
+agent. It does not touch `sshd_config`.
+
+### Linux machines on your network (headless)
 
 ```sh
 curl -fsSLo pixregie-agent https://github.com/dmckminard/pixregie/releases/latest/download/pixregie-agent-linux-amd64
@@ -126,23 +161,38 @@ Its menu:
 | Ouvrir la page de debug  | the Pi's page: live picture of the screen and data    |
 | Lancer au démarrage      | launch at login; your choice is remembered            |
 | Associer à nouveau…      | pair again (new Pi, or after a reset)                 |
+| Mettre à jour vers vX    | shown when a new version is out; installs it          |
 | Quitter Pixregie         | quit                                                  |
 
 Only one copy of the app runs at a time.
 
+### Managing machines (on the Pi)
+
+```sh
+sudo bash install-pi.sh --agents                     # paired machines and servers
+sudo bash install-pi.sh --rename-agent OLD NEW       # quote names with spaces
+sudo bash install-pi.sh --remove-agent NAME          # revoke: its token stops working at once
+sudo bash install-pi.sh --remove-server NAME
+```
+
+Changes apply immediately, without restarting anything.
+
 ## Update
 
-- **Pi**: run the two `curl` / `sudo bash install-pi.sh` lines again. The
-  configuration (password, paired machines) is kept.
-- **macOS**: run the install command again.
-- **Windows**: quit Pixregie, replace `Pixregie.exe`, start it again.
+- **Pi and servers**: automatic, once a day. To force it, re-run the
+  installer; the configuration is kept.
+- **macOS and Windows**: the app checks every few hours and shows
+  *Mettre à jour vers vX* in its menu; one click installs it and restarts
+  the app. The install command and a fresh `Pixregie.exe` also work.
 
 Pairing is kept across updates.
 
 ## Uninstall
 
 - **Pi**: `sudo bash install-pi.sh --uninstall` (keeps `/etc/pixregie`;
-  delete it to forget passwords and paired machines).
+  delete it to forget passwords, paired machines and the tunnel key).
+- **Server**: `sudo bash install-server.sh --user USER --uninstall`, then on
+  the Pi `--remove-server NAME`.
 - **macOS**:
   ```sh
   /Applications/Pixregie.app/Contents/MacOS/pixregie-agent hooks uninstall
@@ -167,12 +217,26 @@ Pairing is kept across updates.
 | “Token refusé par le Pi”                 | *Associer à nouveau…*                                               |
 | A closed session stays on the screen     | It was opened before the hooks were installed: it disappears after an hour idle. |
 | Black borders on the Pi's screen         | Reboot once after installing.                                       |
+| A server's room never appears            | On the Pi: `journalctl -u 'pixregie-tunnel@*' -n 20`; on the server: `journalctl -u pixregie-agent -n 20`. |
 
 The debug page (`http://<pi-address>:7421`, any user name and your
 password) shows the live screen and what each machine reports.
 
 ## Security
 
+- **Signed releases**: `SHA256SUMS` is signed with an SSH ed25519 key
+  ([`release.pub`](release.pub)). The installers (`ssh-keygen -Y verify`),
+  the Pi and server updaters and the app's updater all refuse a release
+  whose signature does not verify. To check by hand:
+  ```sh
+  printf 'pixregie-release namespaces="pixregie-release" %s\n' "$(cat release.pub)" > allowed
+  ssh-keygen -Y verify -f allowed -I pixregie-release -n pixregie-release -s SHA256SUMS.sig < SHA256SUMS
+  ```
+- **Servers**: the Pi's tunnel key is restricted on the server to
+  `restrict,port-forwarding,permitopen="127.0.0.1:7423"`: no shell, no
+  command, no other port. The agent there only answers read-only requests
+  on loopback, carries its token as a systemd credential and cannot open
+  connections outside localhost.
 - The agent's only network traffic is to the Pi; its hook endpoint listens
   on `127.0.0.1` and refuses browser requests.
 - Tokens are random (256 bits), stored hashed on the Pi; the debug password
@@ -200,7 +264,8 @@ go run ./cmd/pixregie-display render -scale 1.5 -o out.png # the screen, demo da
 - Fonts (Silkscreen, VT323, OFL) are pre-rasterised by `tools/fontgen`.
 
 Releases are built by GitHub Actions: bumping `VERSION` on `main` publishes
-`v<VERSION>` with every binary and `SHA256SUMS`.
+`v<VERSION>` with every binary, `SHA256SUMS` and its signature (the
+private key is the `RELEASE_SIGNING_KEY` secret).
 
 ## License
 
