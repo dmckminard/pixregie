@@ -197,20 +197,29 @@ func pairFlow(server string, first bool) (string, bool) {
 		intro = "Bienvenue ! " + hooksNote + "\n\n"
 	}
 	if server == "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-		found, err := discover.Find(ctx, 6*time.Second)
-		cancel()
+		// On macOS the first network access triggers the "local network"
+		// permission prompt and fails while it is open: keep looking for a
+		// minute instead of giving up on the first try.
+		found, err := "", error(nil)
+		for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			found, err = discover.Find(ctx, 5*time.Second)
+			cancel()
+			if err == nil {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
 		if err != nil {
 			return askToken(intro + "Pi introuvable sur le réseau. Colle un token créé sur le Pi avec :\n" +
 				"sudo bash install-pi.sh --add-agent NOM")
 		}
 		server = found
 	}
-	if first {
-		alert(intro + "Un code va s'afficher sur l'écran du Pi.")
-	}
+	// The code is on the Pi's screen as soon as Pair starts; the first
+	// dialog carries the welcome text.
 	tok, err := agent.Pair(context.Background(), server, computerName(), func(retry bool) (string, bool) {
-		msg := "Tape le code affiché sur l'écran du Pi :"
+		msg := intro + "Tape le code affiché sur l'écran du Pi :"
 		if retry {
 			msg = "Code incorrect. Tape le code affiché sur l'écran du Pi :"
 		}

@@ -16,6 +16,8 @@ var (
 	ErrPairCancelled = errors.New("association annulée")
 	// ErrPairExpired: too slow, or too many wrong codes. Start again.
 	ErrPairExpired = errors.New("code expiré ou trop d'essais, recommence")
+	// ErrPiTooOld: the display predates pairing by code.
+	ErrPiTooOld = errors.New("le Pi doit être mis à jour (sur le Pi : sudo bash install-pi.sh)")
 )
 
 // Pair asks the display for a pairing code (shown on its screen), asks the
@@ -33,6 +35,9 @@ func Pair(ctx context.Context, server, label string, askCode func(retry bool) (s
 	code, err := postJSON(ctx, c, base.JoinPath("/v1/pair/start").String(), map[string]string{"label": label}, &start)
 	if err != nil {
 		return "", err
+	}
+	if code == http.StatusNotFound || code == http.StatusMethodNotAllowed {
+		return "", ErrPiTooOld
 	}
 	if code == http.StatusTooManyRequests {
 		return "", errors.New("trop de demandes d'association, réessaie dans une minute")

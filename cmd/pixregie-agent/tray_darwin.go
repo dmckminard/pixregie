@@ -28,14 +28,28 @@ func osaString(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
+// appIcon returns the AppleScript clause showing the app's own icon in
+// dialogs (osascript would otherwise show a generic folder).
+func appIcon() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	icns := filepath.Join(filepath.Dir(exe), "..", "Resources", "Pixregie.icns")
+	if _, err := os.Stat(icns); err != nil {
+		return ""
+	}
+	return "with icon (POSIX file " + osaString(filepath.Clean(icns)) + ") "
+}
+
 func prompt(msg string, hidden bool) (string, bool) {
 	h := ""
 	if hidden {
 		h = "with hidden answer "
 	}
-	script := fmt.Sprintf(`text returned of (display dialog %s default answer "" %s`+
+	script := fmt.Sprintf(`text returned of (display dialog %s default answer "" %s%s`+
 		`with title "Pixregie" buttons {"Annuler", "OK"} default button "OK" cancel button "Annuler")`,
-		osaString(msg), h)
+		osaString(msg), h, appIcon())
 	out, err := exec.Command("/usr/bin/osascript", "-e", script).Output()
 	if err != nil {
 		return "", false
@@ -45,7 +59,8 @@ func prompt(msg string, hidden bool) (string, bool) {
 
 func alert(msg string) {
 	exec.Command("/usr/bin/osascript", "-e",
-		fmt.Sprintf(`display alert "Pixregie" message %s`, osaString(msg))).Run()
+		fmt.Sprintf(`display dialog %s %swith title "Pixregie" buttons {"OK"} default button "OK"`,
+			osaString(msg), appIcon())).Run()
 }
 
 func openURL(u string) { exec.Command("/usr/bin/open", u).Start() }

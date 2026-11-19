@@ -42,3 +42,12 @@ func TestPairAgainstRealCollector(t *testing.T) {
 type testWriter struct{ t *testing.T }
 
 func (w testWriter) Write(p []byte) (int, error) { w.t.Log(string(p)); return len(p), nil }
+
+func TestPairOldDisplay(t *testing.T) {
+	srv := &collector.Server{Store: collector.NewStore(time.Minute, time.Hour)} // no Pairer
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	if _, err := Pair(context.Background(), ts.URL, "Mac", func(bool) (string, bool) { return "1", true }); err != ErrPiTooOld {
+		t.Fatalf("got %v", err)
+	}
+}
