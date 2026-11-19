@@ -1,11 +1,38 @@
 name: release
+# A release is published when the VERSION file changes on main (or when a
+# v* tag is pushed by hand). The tag is created by the publish job.
 on:
   push:
+    branches: [main]
+    paths: [VERSION]
     tags: ["v*"]
 permissions:
   contents: write
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      skip: ${{ steps.v.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then tag="${GITHUB_REF_NAME}"; else tag="v$(tr -d ' \n' < VERSION)"; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          # Already published (e.g. tag pushed by hand): nothing to do.
+          if [ "${GITHUB_REF_TYPE}" != tag ] && gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   linux-windows:
+    needs: version
+    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -13,10 +40,17 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
+      - name: Windows resources (exe icon, manifest)
+        run: |
+          go run ./tools/appicon "$RUNNER_TEMP/iconset"
+          cd cmd/pixregie-agent
+          go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest gui \
+            --icon "$RUNNER_TEMP/iconset/icon_256x256.png" \
+            --product-name Pixregie --file-description Pixregie --original-filename Pixregie.exe
       - name: Build
         run: |
           set -eu
-          v="${GITHUB_REF_NAME}"
+          v="${{ needs.version.outputs.tag }}"
           mkdir dist
           build() { # cmd os arch out [goarm] [extra ldflags]
             CGO_ENABLED=0 GOOS=$2 GOARCH=$3 GOARM=${5:-} go build -trimpath \
@@ -35,6 +69,8 @@ jobs:
           path: dist/*
 
   macos:
+    needs: version
+    if: needs.version.outputs.skip != 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -44,14 +80,14 @@ jobs:
       - run: go vet ./cmd/pixregie-agent
       - run: |
           mkdir dist
-          packaging/macos/build-app.sh "$GITHUB_REF_NAME" dist
+          packaging/macos/build-app.sh "${{ needs.version.outputs.tag }}" dist
       - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: dist/Pixregie-macos.zip
 
   publish:
-    needs: [linux-windows, macos]
+    needs: [version, linux-windows, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -62,11 +98,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -eu
           cd dist && sha256sum * > SHA256SUMS && cd ..
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+            gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "$TAG" --generate-notes
           fi
