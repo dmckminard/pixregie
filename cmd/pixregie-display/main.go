@@ -46,6 +46,8 @@ func main() {
 		addAgent(args)
 	case "set-password":
 		setPassword(args)
+	case "render":
+		renderPNG(args)
 	case "version", "--version", "-v":
 		fmt.Println("pixregie-display", version)
 	default:
@@ -59,6 +61,7 @@ func usage() {
   pixregie-display serve        [-config FILE]
   pixregie-display add-agent    [-config FILE] LABEL   (prints a new token once)
   pixregie-display set-password [-config FILE]         (reads the password on stdin)
+  pixregie-display render       -o FILE.png [-night]    (demo picture, no Pi needed)
   pixregie-display version`)
 }
 
@@ -69,16 +72,20 @@ func configFlag(fs *flag.FlagSet) *string {
 func serve(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	path := configFlag(fs)
+	fbDev := fs.String("fb", "/dev/fb0", "framebuffer device (empty: no screen output)")
 	fs.Parse(args)
 	cfg, err := load(*path)
 	if err != nil {
 		log.Fatal(err)
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
+	store := collector.NewStore(30*time.Second, 24*time.Hour)
+	painter := &painter{store: store, fbDev: *fbDev, log: logger}
 	srv := &collector.Server{
-		Store: collector.NewStore(30*time.Second, 24*time.Hour),
+		Store: store,
 		Auth:  collector.Auth{AgentTokens: cfg.Agents, DebugPassword: cfg.DebugPassword},
 		Log:   logger,
+		Extra: map[string]http.Handler{"/screen.png": http.HandlerFunc(painter.servePNG)},
 	}
 	hs := &http.Server{
 		Addr:              cfg.Listen,
@@ -91,6 +98,7 @@ func serve(args []string) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go painter.run(ctx)
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

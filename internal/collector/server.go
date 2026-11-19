@@ -35,12 +35,17 @@ type Server struct {
 	Store *Store
 	Auth  Auth
 	Log   *log.Logger
+	// Extra GET routes served behind the debug password (e.g. /screen.png).
+	Extra map[string]http.Handler
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/report", s.report)
 	mux.Handle("GET /v1/state", s.debugOnly(http.HandlerFunc(s.state)))
+	for path, h := range s.Extra {
+		mux.Handle("GET "+path, s.debugOnly(h))
+	}
 	static, _ := fs.Sub(webFS, "web")
 	mux.Handle("GET /", s.debugOnly(http.FileServerFS(static)))
 	return secureHeaders(mux)

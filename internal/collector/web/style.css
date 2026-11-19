@@ -28,3 +28,6 @@ section.offline { opacity: .55; }
   .row { grid-template-columns: 14px minmax(0,1fr) 70px; }
   .row .branch, .row .age { display: none; }
 }
+#screen { margin: 0 0 16px; border: 2px solid var(--line); background: #000; }
+#screen img { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+#screen.off { display: none; }

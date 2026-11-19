@@ -50,7 +50,13 @@ function render(state) {
   document.getElementById('updated').textContent = 'mis à jour ' + new Date().toLocaleTimeString();
 }
 
+// Live picture of the Pi's screen; hidden when the display has no renderer.
+const shot = document.getElementById('shot');
+shot.addEventListener('error', () => document.getElementById('screen').classList.add('off'));
+shot.addEventListener('load', () => document.getElementById('screen').classList.remove('off'));
+
 async function tick() {
+  shot.src = 'screen.png?t=' + Date.now();
   try {
     const r = await fetch('v1/state', { cache: 'no-store' });
     if (r.ok) render(await r.json());
