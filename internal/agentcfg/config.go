@@ -17,6 +17,9 @@ import (
 type Config struct {
 	// Server is the display URL. Empty: found with mDNS at each start.
 	Server string `json:"server,omitempty"`
+	// AutostartSet records that launch-at-login was turned on once, so a
+	// user who later turns it off is not overridden.
+	AutostartSet bool `json:"autostart_set,omitempty"`
 }
 
 // Dir is ~/Library/Application Support/Pixregie, %AppData%\Pixregie or

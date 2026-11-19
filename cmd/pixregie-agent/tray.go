@@ -83,7 +83,7 @@ func onReady() {
 func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken *systray.MenuItem) {
 	cfg, _ := agentcfg.Load()
 	token, err := agentcfg.GetToken()
-	firstRun := false
+
 	if err != nil {
 		mStatus.SetTitle("○ Association avec le Pi…")
 		t, ok := pairFlow(cfg.Server, true)
@@ -91,16 +91,20 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken *systray.MenuItem) 
 			systray.Quit()
 			return
 		}
-		token, firstRun = t, true
+		token = t
 	}
 
 	settings, _ := hooks.SettingsPath()
 	if _, err := hooks.Install(settings); err != nil {
 		log.Printf("hooks: %v", err)
 	}
-	if firstRun && !autostartEnabled() {
-		if setAutostart(true) == nil {
+	// Launch at login by default, once: if the user turns it off later,
+	// that choice sticks.
+	if !cfg.AutostartSet {
+		if autostartEnabled() || setAutostart(true) == nil {
 			mLogin.Check()
+			cfg.AutostartSet = true
+			agentcfg.Save(cfg)
 		}
 	}
 
