@@ -26,7 +26,10 @@ BIN="/usr/local/bin/pixregie-display"
 UPDATER="/usr/local/sbin/pixregie-update"
 CONF_DIR="/etc/pixregie"
 CONF="$CONF_DIR/display.json"
-TUN_DIR="$CONF_DIR/tunnel"
+# Outside $CONF_DIR on purpose: that folder belongs to the display service
+# (TLS key, tokens) and the tunnel account must not be able to enter it.
+TUN_DIR="/etc/pixregie-tunnel"
+OLD_TUN_DIR="$CONF_DIR/tunnel" # 0.5.0, unreachable for the tunnel account
 UNIT="/etc/systemd/system/pixregie-display.service"
 AVAHI="/etc/avahi/services/pixregie.service"
 PORT=7421
@@ -90,7 +93,7 @@ uninstall() {
         /etc/systemd/system/pixregie-tunnel@.service /etc/udev/rules.d/70-pixregie-fb.rules
   systemctl daemon-reload
   systemctl enable getty@tty1 2>/dev/null || true
-  say "Kept $CONF_DIR (paired machines, password, tunnel key). Delete it by hand to forget them."
+  say "Kept $CONF_DIR and $TUN_DIR (paired machines, password, tunnel key). Delete them by hand to forget them."
   exit 0
 }
 
@@ -98,6 +101,20 @@ add_agent() {
   need_installed
   say "Token for \"$1\" (shown once, copy it now):"
   as_svc "$BIN" add-agent -config "$CONF" "$1" | sed -n 2p
+}
+
+migrate_tunnel_dir() {
+  if [ -d "$OLD_TUN_DIR" ] && [ ! -e "$TUN_DIR" ]; then
+    mv "$OLD_TUN_DIR" "$TUN_DIR"
+  fi
+  if [ -f /etc/systemd/system/pixregie-tunnel@.service ] &&
+     grep -q "$OLD_TUN_DIR" /etc/systemd/system/pixregie-tunnel@.service; then
+    tunnel_unit
+    systemctl daemon-reload
+    for u in /etc/systemd/system/multi-user.target.wants/pixregie-tunnel@*.service; do
+      [ -e "$u" ] && systemctl restart "$(basename "$u")" || true
+    done
+  fi
 }
 
 tunnel_unit() {
@@ -141,6 +158,7 @@ EOF
 
 add_server() {
   need_installed
+  migrate_tunnel_dir
   local label="$1" target="$2" host port lport name token fp
   host="${target%%:*}"; port=22
   [ "$host" != "$target" ] && port="${target##*:}"
@@ -207,6 +225,7 @@ add_server() {
 
 remove_server() {
   need_installed
+  migrate_tunnel_dir
   local name
   name="$(systemd-escape "$1")"
   systemctl disable --now "pixregie-tunnel@$name.service" 2>/dev/null || true
@@ -409,6 +428,7 @@ if ! dpkg -s unattended-upgrades >/dev/null 2>&1; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unattended-upgrades >/dev/null
 fi
 
+migrate_tunnel_dir
 [ -f /etc/systemd/system/pixregie-tunnel@.service ] && tunnel_unit
 systemctl daemon-reload
 systemctl enable --now pixregie-display >/dev/null
