@@ -64,14 +64,23 @@ func onReady() {
 	mVersion := systray.AddMenuItem("version "+version, "")
 	mVersion.Disable()
 
+	// Quit must always work, even while a dialog is open or the Pi is
+	// being searched for, so it does not wait for the main loop.
+	go func() {
+		<-mQuit.ClickedCh
+		systray.Quit()
+		time.Sleep(2 * time.Second)
+		os.Exit(0) // in case a blocked dialog keeps the process alive
+	}()
+
 	// Everything else runs off the UI thread: dialogs and the event loop
 	// block.
 	go func() {
-		loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mQuit)
+		loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken)
 	}()
 }
 
-func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mQuit *systray.MenuItem) {
+func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken *systray.MenuItem) {
 	cfg, _ := agentcfg.Load()
 	token, err := agentcfg.GetToken()
 	firstRun := false
@@ -171,10 +180,6 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mQuit *systray.Men
 				a, stop = start(t)
 				render()
 			}
-		case <-mQuit.ClickedCh:
-			stop()
-			systray.Quit()
-			return
 		}
 	}
 }

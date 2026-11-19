@@ -11,10 +11,19 @@ import (
 
 func platformIcon(png []byte) []byte { return icon.ICO(png, 32) }
 
-// hidden runs a helper without flashing a console window.
+// hidden runs a console helper (reg, rundll32) without flashing a window.
 func hidden(name string, args ...string) *exec.Cmd {
 	c := exec.Command(name, args...)
 	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+	return c
+}
+
+// dialog runs PowerShell for a dialog: no console window, but NOT
+// HideWindow, which Windows would apply to the dialog itself and leave the
+// app waiting on an invisible box.
+func dialog(script string) *exec.Cmd {
+	c := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	c.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
 	return c
 }
 
@@ -34,7 +43,7 @@ func psString(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") +
 func prompt(msg string, _ bool) (string, bool) {
 	script := "Add-Type -AssemblyName Microsoft.VisualBasic; " +
 		"[Microsoft.VisualBasic.Interaction]::InputBox(" + psString(msg) + ", 'Pixregie', '')"
-	out, err := hidden("powershell", "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	out, err := dialog(script).Output()
 	if err != nil {
 		return "", false
 	}
@@ -45,7 +54,7 @@ func prompt(msg string, _ bool) (string, bool) {
 func alert(msg string) {
 	script := "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show(" +
 		psString(msg) + ", 'Pixregie') | Out-Null"
-	hidden("powershell", "-NoProfile", "-NonInteractive", "-Command", script).Run()
+	dialog(script).Run()
 }
 
 func openURL(u string) { hidden("rundll32", "url.dll,FileProtocolHandler", u).Start() }
