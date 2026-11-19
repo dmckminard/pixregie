@@ -1,10 +1,12 @@
 package screen
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/dmckminard/pixregie/internal/collector"
+	"github.com/dmckminard/pixregie/internal/session"
 )
 
 func TestRenderDoesNotPanic(t *testing.T) {
@@ -46,5 +48,26 @@ func TestBestScale(t *testing.T) {
 		if s != c.scale || k != c.factor {
 			t.Errorf("%dx%d: got x%v*%d, want x%v*%d", c.w, c.h, s, k, c.scale, c.factor)
 		}
+	}
+}
+
+func TestVisible(t *testing.T) {
+	now := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
+	mk := func(id string, st session.Status, age time.Duration) session.Session {
+		return session.Session{ID: id, Status: st, Modified: now.Add(-age)}
+	}
+	got := visible([]session.Session{
+		mk("old-idle", session.Idle, 3*time.Hour),
+		mk("idle", session.Idle, 10*time.Minute),
+		mk("work", session.Working, time.Second),
+		mk("wait", session.Waiting, time.Minute),
+		mk("stale", session.Stale, 20*time.Minute),
+	}, Options{Now: now, IdleHide: time.Hour})
+	var ids []string
+	for _, s := range got {
+		ids = append(ids, s.ID)
+	}
+	if fmt.Sprint(ids) != "[wait stale work idle]" {
+		t.Fatalf("got %v", ids)
 	}
 }

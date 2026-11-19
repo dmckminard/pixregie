@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +22,30 @@ type Options struct {
 	Now   time.Time // clock in the header, ages
 	Host  string    // shown in the footer, e.g. "pixregie.local"
 	Scale float64   // 1 → 1280×720, 1.5 → 1920×1080
+	// IdleHide drops idle sessions untouched for longer than this
+	// (default 1 h): a finished session has nothing to say on the board.
+	IdleHide time.Duration
+}
+
+// visible filters and orders one machine's sessions for the board: most
+// urgent first (waiting, stale, working, idle), then most recent.
+func visible(list []session.Session, o Options) []session.Session {
+	rank := map[session.Status]int{session.Waiting: 0, session.Stale: 1, session.Working: 2, session.Idle: 3}
+	out := make([]session.Session, 0, len(list))
+	for _, s := range list {
+		if s.Status == session.Idle && o.Now.Sub(s.Modified) > o.IdleHide {
+			continue
+		}
+		out = append(out, s)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if rank[a.Status] != rank[b.Status] {
+			return rank[a.Status] < rank[b.Status]
+		}
+		return a.Modified.After(b.Modified)
+	})
+	return out
 }
 
 func hex(s string) color.RGBA {
@@ -72,6 +97,15 @@ func Render(st collector.State, o Options) *image.RGBA {
 	if o.Scale == 0 {
 		o.Scale = 1
 	}
+	if o.IdleHide == 0 {
+		o.IdleHide = time.Hour
+	}
+	machines := make([]collector.Machine, len(st.Machines))
+	for i, m := range st.Machines {
+		m.Sessions = visible(m.Sessions, o)
+		machines[i] = m
+	}
+	st.Machines = machines
 	c := newCanvas(o.Scale)
 	th := dayTheme
 	if o.Night {
@@ -192,12 +226,17 @@ func (c *canvas) room(r image.Rectangle, m collector.Machine, accent color.RGBA,
 	c.text(c.f.small, bx0+12, by0+6, "ON AIR", airFg, 2)
 
 	desks := image.Rect(in.Min.X+4, wall.Max.Y+4+12, in.Max.X-4, in.Max.Y-12)
-	colW := (desks.Dx() - 8) / 2
+	// As many 184 px desks per row as the room is wide (at least 2).
+	cols := (desks.Dx() + 8) / (184 + 8)
+	if cols < 2 {
+		cols = 2
+	}
+	colW := (desks.Dx() - 8*(cols-1)) / cols
 	rows := (desks.Dy() + 8) / 200
 	if rows < 1 {
 		rows = 1
 	}
-	capacity := rows * 2
+	capacity := rows * cols
 	list := m.Sessions
 	extra := 0
 	if len(list) > capacity {
@@ -205,12 +244,12 @@ func (c *canvas) room(r image.Rectangle, m collector.Machine, accent color.RGBA,
 		list = list[:capacity-1]
 	}
 	for i, s := range list {
-		c.desk(desks.Min.X+(i%2)*(colW+8), desks.Min.Y+(i/2)*200, colW, s, i, accent, th, o)
+		c.desk(desks.Min.X+(i%cols)*(colW+8), desks.Min.Y+(i/cols)*200, colW, s, i, accent, th, o)
 	}
 	if extra > 0 {
 		i := len(list)
-		x := desks.Min.X + (i%2)*(colW+8)
-		y := desks.Min.Y + (i/2)*200
+		x := desks.Min.X + (i%cols)*(colW+8)
+		y := desks.Min.Y + (i/cols)*200
 		t := fmt.Sprintf("+%d", extra)
 		c.text(c.f.title, x+(colW-c.textWidth(c.f.title, t, 0))/2, y+70, t, cMuted, 0)
 	}
