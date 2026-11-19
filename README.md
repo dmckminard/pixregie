@@ -56,13 +56,24 @@ The script installs a hardened systemd service, hides the console,
 asks for the debug page password and prints a token for your first machine.
 Re-run it to upgrade; `--add-agent NAME` creates a token for another machine.
 
-## Run the agent (temporary, before the tray app)
+## Install the agent
 
-```sh
-PIXREGIE_TOKEN=pxr_... pixregie-agent run -server http://<pi-address>:7421
-```
+**macOS**: download `Pixregie-macos.zip` from the latest release, unzip,
+move `Pixregie.app` to Applications, then right-click > Open the first time
+(the app is not notarised). **Windows**: run `Pixregie.exe`.
 
-`pixregie-agent scan` prints what the agent sees, without sending anything.
+On first launch the app asks for the token printed by the Pi installer,
+stores it in the Keychain (macOS) or encrypted with DPAPI (Windows), finds
+the Pi on the network by itself and starts at login.
+
+It also adds three hooks to Claude Code (`SessionStart`, `SessionEnd`,
+`Notification` in `~/.claude/settings.json`, original saved as
+`settings.json.pixregie-backup`). They send the session id to the agent on
+`127.0.0.1` so the board knows which sessions are open and which one waits
+for a permission. `pixregie-agent hooks uninstall` removes them.
+
+**Linux servers**: `pixregie-agent pair` (paste the token), then
+`pixregie-agent run`.
 
 ## Preview the screen without a Pi
 

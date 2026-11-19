@@ -40,4 +40,7 @@ type Session struct {
 	Entrypoint string    `json:"entrypoint,omitempty"`
 	LastEvent  time.Time `json:"last_event"` // timestamp of the last transcript entry
 	Modified   time.Time `json:"modified"`   // file modification time
+	// Open is true when Claude Code reported the session as running
+	// (SessionStart hook seen, no SessionEnd yet).
+	Open bool `json:"open,omitempty"`
 }

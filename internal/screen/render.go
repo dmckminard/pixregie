@@ -23,7 +23,8 @@ type Options struct {
 	Host  string    // shown in the footer, e.g. "pixregie.local"
 	Scale float64   // 1 → 1280×720, 1.5 → 1920×1080
 	// IdleHide drops idle sessions untouched for longer than this
-	// (default 1 h): a finished session has nothing to say on the board.
+	// (default 1 h) unless they are known to be open: a finished,
+	// closed session has nothing to say on the board.
 	IdleHide time.Duration
 }
 
@@ -33,7 +34,7 @@ func visible(list []session.Session, o Options) []session.Session {
 	rank := map[session.Status]int{session.Waiting: 0, session.Stale: 1, session.Working: 2, session.Idle: 3}
 	out := make([]session.Session, 0, len(list))
 	for _, s := range list {
-		if s.Status == session.Idle && o.Now.Sub(s.Modified) > o.IdleHide {
+		if s.Status == session.Idle && !s.Open && o.Now.Sub(s.Modified) > o.IdleHide {
 			continue
 		}
 		out = append(out, s)
