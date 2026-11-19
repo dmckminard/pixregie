@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image/color"
 	"log"
@@ -16,13 +17,13 @@ import (
 
 	"github.com/dmckminard/pixregie/internal/agent"
 	"github.com/dmckminard/pixregie/internal/agentcfg"
+	"github.com/dmckminard/pixregie/internal/discover"
 	"github.com/dmckminard/pixregie/internal/hooks"
 	"github.com/dmckminard/pixregie/internal/icon"
 	"github.com/dmckminard/pixregie/internal/session"
 )
 
-const pairPrompt = "Colle le token affiché par le Pi (il commence par pxr_).\n\n" +
-	"Pixregie ajoute aussi 3 hooks à Claude Code pour savoir quelles sessions sont ouvertes. " +
+const hooksNote = "Pixregie ajoute aussi 3 hooks à Claude Code pour savoir quelles sessions sont ouvertes. " +
 	"Ils ne transmettent que l'identifiant de session, jamais tes prompts ni ton code."
 
 func tray() {
@@ -58,7 +59,7 @@ func onReady() {
 	mDebug := systray.AddMenuItem("Ouvrir la page de debug", "")
 	mLogin := systray.AddMenuItemCheckbox("Lancer au démarrage", "", autostartEnabled())
 	systray.AddSeparator()
-	mToken := systray.AddMenuItem("Changer de token…", "")
+	mToken := systray.AddMenuItem("Associer à nouveau…", "")
 	mQuit := systray.AddMenuItem("Quitter Pixregie", "")
 	mVersion := systray.AddMenuItem("version "+version, "")
 	mVersion.Disable()
@@ -71,10 +72,12 @@ func onReady() {
 }
 
 func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mQuit *systray.MenuItem) {
+	cfg, _ := agentcfg.Load()
 	token, err := agentcfg.GetToken()
 	firstRun := false
 	if err != nil {
-		t, ok := askToken(pairPrompt)
+		mStatus.SetTitle("○ Association avec le Pi…")
+		t, ok := pairFlow(cfg.Server, true)
 		if !ok {
 			systray.Quit()
 			return
@@ -101,7 +104,6 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mQuit *systray.Men
 		}
 	}()
 
-	cfg, _ := agentcfg.Load()
 	start := func(tok string) (*agent.Agent, context.CancelFunc) {
 		a, err := agent.New(agent.Config{Server: cfg.Server, Token: tok, Tracker: tracker})
 		if err != nil {
@@ -164,7 +166,7 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mQuit *systray.Men
 				mLogin.Uncheck()
 			}
 		case <-mToken.ClickedCh:
-			if t, ok := askToken("Nouveau token (pxr_…), généré sur le Pi avec :\nsudo bash install-pi.sh --add-agent NOM"); ok {
+			if t, ok := pairFlow(cfg.Server, false); ok {
 				stop()
 				a, stop = start(t)
 				render()
@@ -177,11 +179,53 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mQuit *systray.Men
 	}
 }
 
+// pairFlow finds the Pi and pairs with the code shown on its screen. If
+// the Pi cannot be found or paired, it falls back to pasting a token
+// created on the Pi. The token is stored on success.
+func pairFlow(server string, first bool) (string, bool) {
+	intro := ""
+	if first {
+		intro = "Bienvenue ! " + hooksNote + "\n\n"
+	}
+	if server == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+		found, err := discover.Find(ctx, 6*time.Second)
+		cancel()
+		if err != nil {
+			return askToken(intro + "Pi introuvable sur le réseau. Colle un token créé sur le Pi avec :\n" +
+				"sudo bash install-pi.sh --add-agent NOM")
+		}
+		server = found
+	}
+	if first {
+		alert(intro + "Un code va s'afficher sur l'écran du Pi.")
+	}
+	tok, err := agent.Pair(context.Background(), server, computerName(), func(retry bool) (string, bool) {
+		msg := "Tape le code affiché sur l'écran du Pi :"
+		if retry {
+			msg = "Code incorrect. Tape le code affiché sur l'écran du Pi :"
+		}
+		return prompt(msg, false)
+	})
+	if errors.Is(err, agent.ErrPairCancelled) {
+		return "", false
+	}
+	if err != nil {
+		alert("Association impossible : " + err.Error())
+		return "", false
+	}
+	if err := agentcfg.SetToken(tok); err != nil {
+		alert("Impossible d'enregistrer le token : " + err.Error())
+		return "", false
+	}
+	return tok, true
+}
+
 // askToken shows the platform dialog until a well-formed token is entered
 // or the user cancels, then stores it.
 func askToken(msg string) (string, bool) {
 	for {
-		t, ok := promptToken(msg)
+		t, ok := prompt(msg, true)
 		if !ok {
 			return "", false
 		}

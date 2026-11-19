@@ -17,6 +17,7 @@ import (
 
 	"github.com/dmckminard/pixregie/internal/agent"
 	"github.com/dmckminard/pixregie/internal/agentcfg"
+	"github.com/dmckminard/pixregie/internal/discover"
 	"github.com/dmckminard/pixregie/internal/hooks"
 	"github.com/dmckminard/pixregie/internal/session"
 )
@@ -112,10 +113,46 @@ func run(args []string) {
 	}
 }
 
+// pair associates this machine with the display: by the code shown on the
+// Pi's screen (default), or with a token pasted on stdin (-token).
 func pair(args []string) {
-	fmt.Fprint(os.Stderr, "Token (pxr_…): ")
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	tok := strings.TrimSpace(line)
+	fs := flag.NewFlagSet("pair", flag.ExitOnError)
+	server := fs.String("server", "", "display URL (default: found with mDNS)")
+	byToken := fs.Bool("token", false, "paste a token from `pixregie-display add-agent` instead")
+	fs.Parse(args)
+	in := bufio.NewReader(os.Stdin)
+	var tok string
+	if *byToken {
+		fmt.Fprint(os.Stderr, "Token (pxr_…): ")
+		line, _ := in.ReadString('\n')
+		tok = strings.TrimSpace(line)
+	} else {
+		if *server == "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+			found, err := discover.Find(ctx, 6*time.Second)
+			cancel()
+			if err != nil {
+				fatal(errors.New("display not found on the network: use -server URL"))
+			}
+			*server = found
+		}
+		host, _ := os.Hostname()
+		var err error
+		tok, err = agent.Pair(context.Background(), *server, host, func(retry bool) (string, bool) {
+			if retry {
+				fmt.Fprint(os.Stderr, "Wrong code. ")
+			}
+			fmt.Fprint(os.Stderr, "Code shown on the Pi's screen: ")
+			line, err := in.ReadString('\n')
+			return strings.TrimSpace(line), err == nil
+		})
+		if err != nil {
+			fatal(err)
+		}
+		cfg, _ := agentcfg.Load()
+		cfg.Server = *server
+		agentcfg.Save(cfg)
+	}
 	if !agentcfg.ValidToken(tok) {
 		fatal(errors.New("this does not look like a Pixregie token"))
 	}

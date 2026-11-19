@@ -23,9 +23,10 @@ const frameEvery = 600 * time.Millisecond
 // painter renders the room and pushes it to the framebuffer. The latest
 // frame is also kept for the debug page's live preview.
 type painter struct {
-	store *collector.Store
-	fbDev string
-	log   *log.Logger
+	store  *collector.Store
+	pairer *collector.Pairer
+	fbDev  string
+	log    *log.Logger
 
 	mu   sync.Mutex
 	last *image.RGBA
@@ -55,9 +56,11 @@ func (p *painter) run(ctx context.Context) {
 	defer t.Stop()
 	for frame := 0; ; frame++ {
 		now := time.Now()
-		img := screen.Render(p.store.Snapshot(), screen.Options{
-			Frame: frame, Night: isNight(now), Now: now, Host: host + ".local", Scale: scale,
-		})
+		opt := screen.Options{Frame: frame, Night: isNight(now), Now: now, Host: host + ".local", Scale: scale}
+		if req, ok := p.pairer.Pending(); ok {
+			opt.Pair = &req
+		}
+		img := screen.Render(p.store.Snapshot(), opt)
 		p.mu.Lock()
 		p.last = img
 		p.mu.Unlock()

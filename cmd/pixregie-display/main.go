@@ -80,12 +80,24 @@ func serve(args []string) {
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	store := collector.NewStore(30*time.Second, 24*time.Hour)
-	painter := &painter{store: store, fbDev: *fbDev, log: logger}
+	pairer := collector.NewPairer()
+	painter := &painter{store: store, pairer: pairer, fbDev: *fbDev, log: logger}
 	srv := &collector.Server{
-		Store: store,
-		Auth:  collector.Auth{AgentTokens: cfg.Agents, DebugPassword: cfg.DebugPassword},
-		Log:   logger,
-		Extra: map[string]http.Handler{"/screen.png": http.HandlerFunc(painter.servePNG)},
+		Store:  store,
+		Auth:   collector.Auth{AgentTokens: cfg.Agents, DebugPassword: cfg.DebugPassword},
+		Log:    logger,
+		Extra:  map[string]http.Handler{"/screen.png": http.HandlerFunc(painter.servePNG)},
+		Pairer: pairer,
+		// Re-read the file before adding, so agents added meanwhile with
+		// `add-agent` are not lost.
+		SaveAgent: func(hash, label string) error {
+			c, err := load(*path)
+			if err != nil {
+				return err
+			}
+			c.Agents[hash] = label
+			return save(*path, c)
+		},
 	}
 	hs := &http.Server{
 		Addr:              cfg.Listen,

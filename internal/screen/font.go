@@ -99,6 +99,23 @@ func (f *font) draw(dst *image.RGBA, x, y int, s string, c color.RGBA, spacing i
 	return x - x0 - spacing
 }
 
+// drawScaled is draw with every glyph pixel enlarged k times (big digits).
+func (f *font) drawScaled(dst *image.RGBA, x, y int, s string, c color.RGBA, spacing, k int) int {
+	x0 := x
+	for _, r := range s {
+		g := f.glyph(r)
+		for gy := 0; gy < f.height; gy++ {
+			for gx := 0; gx < g[1]; gx++ {
+				if f.atlas.GrayAt(g[0]+gx, gy).Y > 127 {
+					fill(dst, image.Rect(x+gx*k, y+gy*k, x+gx*k+k, y+gy*k+k), c)
+				}
+			}
+		}
+		x += g[1]*k + spacing
+	}
+	return x - x0 - spacing
+}
+
 // fit shortens s with an ellipsis so it is at most max pixels wide.
 func (f *font) fit(s string, max int) string {
 	if f.width(s, 0) <= max {

@@ -30,7 +30,8 @@ func darkMenuBar() bool {
 // psString quotes s for a PowerShell single-quoted string.
 func psString(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 
-func promptToken(msg string) (string, bool) {
+// prompt shows an input box. Windows' InputBox cannot hide what is typed.
+func prompt(msg string, _ bool) (string, bool) {
 	script := "Add-Type -AssemblyName Microsoft.VisualBasic; " +
 		"[Microsoft.VisualBasic.Interaction]::InputBox(" + psString(msg) + ", 'Pixregie', '')"
 	out, err := hidden("powershell", "-NoProfile", "-NonInteractive", "-Command", script).Output()
@@ -64,4 +65,9 @@ func setAutostart(on bool) error {
 		return err
 	}
 	return hidden("reg", "add", runKey, "/v", "Pixregie", "/t", "REG_SZ", "/d", `"`+exe+`"`, "/f").Run()
+}
+
+func computerName() string {
+	h, _ := os.Hostname()
+	return h
 }

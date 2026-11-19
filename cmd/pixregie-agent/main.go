@@ -44,7 +44,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   pixregie-agent                    menu-bar app (macOS, Windows)
   pixregie-agent run [-server URL]  report in the background (display found with mDNS by default)
-  pixregie-agent pair               store the token from 'pixregie-display add-agent' (read on stdin)
+  pixregie-agent pair [-token]      pair with the code shown on the Pi's screen
   pixregie-agent hooks install|uninstall|status
   pixregie-agent scan [-json]       print what the agent sees, send nothing
   pixregie-agent version`)

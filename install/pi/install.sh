@@ -148,7 +148,8 @@ AmbientCapabilities=
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadOnlyPaths=$CONF_DIR
+# Pairing by code adds agents to the config at run time.
+ReadWritePaths=$CONF_DIR
 DevicePolicy=closed
 DeviceAllow=/dev/fb0 rw
 DeviceAllow=/dev/tty1 w

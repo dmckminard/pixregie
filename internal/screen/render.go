@@ -22,6 +22,8 @@ type Options struct {
 	Now   time.Time // clock in the header, ages
 	Host  string    // shown in the footer, e.g. "pixregie.local"
 	Scale float64   // 1 → 1280×720, 1.5 → 1920×1080
+	// Pair, when set, shows the pairing code over the room.
+	Pair *collector.PairRequest
 	// IdleHide drops idle sessions untouched for longer than this
 	// (default 1 h) unless they are known to be open: a finished,
 	// closed session has nothing to say on the board.
@@ -133,8 +135,16 @@ func Render(st collector.State, o Options) *image.RGBA {
 	if len(st.Machines) == 0 {
 		msg := "En attente des agents…"
 		c.text(c.f.body, area.Min.X+(area.Dx()-c.textWidth(c.f.body, msg, 0))/2, area.Min.Y+area.Dy()/2-10, msg, cMuted, 0)
+		if o.Pair != nil {
+			c.pairing(*o.Pair, th)
+		}
 		return c.img
 	}
+	defer func() {
+		if o.Pair != nil {
+			c.pairing(*o.Pair, th)
+		}
+	}()
 	n := len(st.Machines)
 	if n > 4 {
 		n = 4 // more would not fit legibly
@@ -367,4 +377,40 @@ func BestScale(w, h int) (scale float64, factor int) {
 		}
 	}
 	return scale, factor
+}
+
+// pairing draws the code panel shown while a new machine pairs.
+func (c *canvas) pairing(p collector.PairRequest, th theme) {
+	c.dim(0, 60, Width, Height-32, th.bg, 0.7)
+	w, h := 720, 340
+	x0, y0 := (Width-w)/2, (Height-h)/2
+	c.fill(x0, y0, x0+w, y0+h, cOutline)
+	c.fill(x0+4, y0+4, x0+w-4, y0+h-4, hex("#fbbf24"))
+	c.fill(x0+8, y0+8, x0+w-8, y0+h-8, th.wall)
+
+	center := func(f *font, y int, s string, col color.RGBA, spacing int) {
+		c.text(f, x0+(w-c.textWidth(f, s, spacing))/2, y, s, col, spacing)
+	}
+	center(c.f.small, y0+32, "NOUVELLE MACHINE", hex("#fbbf24"), 2)
+	center(c.f.body, y0+64, c.fit(c.f.body, "Associer « "+p.Label+" » ?", w-64), cText, 0)
+
+	// Code: "482 913", glyph pixels enlarged so it reads from the sofa.
+	code := p.Code
+	if len(code) == 6 {
+		code = code[:3] + " " + code[3:]
+	}
+	// Regular Silkscreen: its digits stay unambiguous when enlarged
+	// (the bold 4 reads as a blob).
+	k := 4
+	f := c.f.small
+	sp := c.px(8)
+	dw := f.width(code, 0)*k + sp*(len([]rune(code))-1)
+	dh := f.height * k
+	dx := c.px(x0) + (c.px(w)-dw)/2
+	dy := c.px(y0+120) + (c.px(120)-dh)/2
+	f.drawScaled(c.img, dx, dy, code, cText, sp, k)
+
+	left := int(p.Left.Seconds())
+	center(c.f.body, y0+h-72, "Tape ce code dans l'app Pixregie", cMuted, 0)
+	center(c.f.body, y0+h-44, fmt.Sprintf("expire dans %d:%02d", left/60, left%60), cMuted, 0)
 }

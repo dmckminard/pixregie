@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 //go:embed web
@@ -37,11 +38,21 @@ type Server struct {
 	Log   *log.Logger
 	// Extra GET routes served behind the debug password (e.g. /screen.png).
 	Extra map[string]http.Handler
+	// Pairer enables pairing by code shown on the screen; nil disables it.
+	Pairer *Pairer
+	// SaveAgent persists a newly paired agent (token hash, label).
+	SaveAgent func(hash, label string) error
+
+	mu sync.RWMutex // guards Auth.AgentTokens, which pairing extends
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/report", s.report)
+	if s.Pairer != nil {
+		mux.HandleFunc("POST /v1/pair/start", s.pairStart)
+		mux.HandleFunc("POST /v1/pair/finish", s.pairFinish)
+	}
 	mux.Handle("GET /v1/state", s.debugOnly(http.HandlerFunc(s.state)))
 	for path, h := range s.Extra {
 		mux.Handle("GET "+path, s.debugOnly(h))
@@ -79,6 +90,8 @@ func (s *Server) agent(r *http.Request) (string, bool) {
 	if !ok || tok == "" {
 		return "", false
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	label, ok := s.Auth.AgentTokens[HashSecret(tok)]
 	return label, ok
 }

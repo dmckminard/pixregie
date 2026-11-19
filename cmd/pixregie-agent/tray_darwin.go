@@ -22,10 +22,14 @@ func osaString(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
-func promptToken(msg string) (string, bool) {
-	script := fmt.Sprintf(`text returned of (display dialog %s default answer "" with hidden answer `+
-		`with title "Pixregie" buttons {"Annuler", "Associer"} default button "Associer" cancel button "Annuler")`,
-		osaString(msg))
+func prompt(msg string, hidden bool) (string, bool) {
+	h := ""
+	if hidden {
+		h = "with hidden answer "
+	}
+	script := fmt.Sprintf(`text returned of (display dialog %s default answer "" %s`+
+		`with title "Pixregie" buttons {"Annuler", "OK"} default button "OK" cancel button "Annuler")`,
+		osaString(msg), h)
 	out, err := exec.Command("/usr/bin/osascript", "-e", script).Output()
 	if err != nil {
 		return "", false
@@ -87,4 +91,15 @@ func setAutostart(on bool) error {
 		return err
 	}
 	return os.WriteFile(p, b.Bytes(), 0o644)
+}
+
+// computerName is the name shown in System Settings ("MacBook Pro de Camille").
+func computerName() string {
+	if out, err := exec.Command("/usr/sbin/scutil", "--get", "ComputerName").Output(); err == nil {
+		if n := strings.TrimSpace(string(out)); n != "" {
+			return n
+		}
+	}
+	h, _ := os.Hostname()
+	return h
 }
