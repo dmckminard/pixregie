@@ -82,8 +82,9 @@ The script asks for a password for the debug page, then:
   `ssh-copy-id you@pi.local`, then `sudo bash install-pi.sh --harden-ssh`;
 - **protects the SD card**: logs in RAM, no swap file, no access-time
   writes;
-- turns on daily **automatic updates** of Pixregie (signed releases only)
-  and of Debian security fixes.
+- turns on Debian security updates. Automatic Pixregie updates are
+  available but **off by default** (`--auto-update on`): an automatic
+  update runs new code as root without you.
 
 The picture adapts to the screen: native 1080p, 720p, and pixel-perfect
 upscales for 1440p and 4K.
@@ -179,8 +180,9 @@ Changes apply immediately, without restarting anything.
 
 ## Update
 
-- **Pi and servers**: automatic, once a day. To force it, re-run the
-  installer; the configuration is kept.
+- **Pi and servers**: re-run the installer; the configuration is kept.
+  Or turn on daily signed updates: `sudo bash install-pi.sh --auto-update on`
+  on the Pi, `--auto-update` when installing a server.
 - **macOS and Windows**: the app checks every few hours and shows
   *Mettre à jour vers vX* in its menu; one click installs it and restarts
   the app. The install command and a fresh `Pixregie.exe` also work.
@@ -264,8 +266,10 @@ go run ./cmd/pixregie-display render -scale 1.5 -o out.png # the screen, demo da
 - Fonts (Silkscreen, VT323, OFL) are pre-rasterised by `tools/fontgen`.
 
 Releases are built by GitHub Actions: bumping `VERSION` on `main` publishes
-`v<VERSION>` with every binary, `SHA256SUMS` and its signature (the
-private key is the `RELEASE_SIGNING_KEY` secret).
+`v<VERSION>` with every binary, `SHA256SUMS` and its signature. The
+private key exists only as the `RELEASE_SIGNING_KEY` secret; if it is ever
+lost or leaked, generate a new one, replace `release.pub` (a test checks
+every copy of it) and reinstall the machines once.
 
 ## License
 

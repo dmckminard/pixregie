@@ -16,7 +16,8 @@
 #   - Claude Code hooks for USER (session open/closed, permission prompts);
 #   - a "pixregie-tunnel" account with no shell and no password, whose only
 #     SSH key may open a tunnel to 127.0.0.1:7423 and nothing else;
-#   - daily signed updates of the agent.
+#   - with --auto-update, daily signed updates of the agent (off by default:
+#     an automatic update runs new code on the server without you).
 # sshd_config is not modified.
 set -euo pipefail
 
@@ -40,11 +41,13 @@ die()  { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
 USER_NAME="${SUDO_USER:-}"
 PI_KEY=""
 UNINSTALL=0
+AUTO_UPDATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --user) USER_NAME="${2:-}"; shift 2 ;;
     --pi-key) PI_KEY="${2:-}"; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
+    --auto-update) AUTO_UPDATE=1; shift ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -170,7 +173,11 @@ say "Adding Claude Code hooks for $USER_NAME"
 runuser -u "$USER_NAME" -- "$BIN" hooks install
 
 systemctl daemon-reload
-systemctl enable --now pixregie-agent pixregie-agent-update.timer >/dev/null
+systemctl enable --now pixregie-agent >/dev/null
+if [ "$AUTO_UPDATE" -eq 1 ]; then
+  systemctl enable --now pixregie-agent-update.timer >/dev/null
+  say "Daily signed updates: on"
+fi
 systemctl restart pixregie-agent
 
 # --- tunnel account ---------------------------------------------------------------
