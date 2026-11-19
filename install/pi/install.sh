@@ -11,7 +11,6 @@
 #   sudo bash install-pi.sh --add-server NAME user@host[:port]   watch a server through SSH
 #   sudo bash install-pi.sh --remove-server NAME
 #   sudo bash install-pi.sh --harden-ssh               SSH by key only (asked during install)
-#   sudo bash install-pi.sh --auto-update on|off       daily signed updates (off by default)
 #   sudo bash install-pi.sh --uninstall
 #
 # Idempotent: re-running upgrades and keeps the configuration. Every download
@@ -83,11 +82,11 @@ fetch() {
 
 uninstall() {
   say "Removing Pixregie"
-  systemctl disable --now pixregie-display pixregie-update.timer 2>/dev/null || true
+  systemctl disable --now pixregie-display 2>/dev/null || true
   for u in /etc/systemd/system/pixregie-tunnel@*.service; do
     [ -e "$u" ] && systemctl disable --now "$(basename "$u")" 2>/dev/null || true
   done
-  rm -f "$UNIT" "$AVAHI" "$BIN" "$UPDATER" /etc/systemd/system/pixregie-update.{service,timer} \
+  rm -f "$UNIT" "$AVAHI" "$BIN" \
         /etc/systemd/system/pixregie-tunnel@.service /etc/udev/rules.d/70-pixregie-fb.rules
   systemctl daemon-reload
   systemctl enable getty@tty1 2>/dev/null || true
@@ -249,22 +248,17 @@ case "${1:-}" in
   --add-server) [ -n "${3:-}" ] || die "usage: --add-server NAME user@host[:port]"; add_server "$2" "$3"; exit 0 ;;
   --remove-server) [ -n "${2:-}" ] || die "usage: --remove-server NAME"; remove_server "$2"; exit 0 ;;
   --harden-ssh) harden_ssh; exit 0 ;;
-  --auto-update)
-    case "${2:-}" in
-      on) systemctl enable --now pixregie-update.timer >/dev/null && say "Daily updates on" ;;
-      off) systemctl disable --now pixregie-update.timer >/dev/null 2>&1; say "Daily updates off" ;;
-      *) die "usage: --auto-update on|off" ;;
-    esac
-    exit 0 ;;
   "") ;;
   *) die "unknown option: $1" ;;
 esac
 
 # --- binaries ------------------------------------------------------------------
 say "Downloading $ASSET ($VERSION), checking the release signature"
-fetch "$ASSET" pixregie-update.sh
+fetch "$ASSET"
 install -m 0755 "$TMP/$ASSET" "$BIN"
-install -m 0755 "$TMP/pixregie-update.sh" "$UPDATER"
+# Earlier versions installed an automatic updater: remove it.
+systemctl disable --now pixregie-update.timer >/dev/null 2>&1 || true
+rm -f "$UPDATER" /etc/systemd/system/pixregie-update.service /etc/systemd/system/pixregie-update.timer
 say "Installed $("$BIN" version)"
 
 # --- service user and configuration -----------------------------------------
@@ -390,30 +384,6 @@ UMask=0077
 WantedBy=multi-user.target
 EOF
 
-# --- optional automatic updates (signed releases only) ------------------------
-cat >/etc/systemd/system/pixregie-update.service <<EOF
-[Unit]
-Description=Pixregie update
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=$UPDATER $ASSET $BIN pixregie-display
-EOF
-cat >/etc/systemd/system/pixregie-update.timer <<'EOF'
-[Unit]
-Description=Daily Pixregie update
-
-[Timer]
-OnCalendar=daily
-RandomizedDelaySec=4h
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
 # --- mDNS: agents find the board by service type, not by host name ----------
 if [ -d /etc/avahi/services ]; then
   cat >"$AVAHI" <<EOF
@@ -441,8 +411,6 @@ fi
 systemctl daemon-reload
 systemctl enable --now pixregie-display >/dev/null
 systemctl restart pixregie-display
-# The update timer is installed but off by default: an automatic update
-# runs code from the release as root. Turn on with --auto-update on.
 
 # --- SSH ---------------------------------------------------------------------
 # Asked once; later: sudo bash install-pi.sh --harden-ssh
@@ -459,11 +427,7 @@ say "Done. Debug page: http://$IP:$PORT  (any user name, your password)"
 if [ "$FIRST_RUN" -eq 1 ]; then
   say "Now open the Pixregie app on your Mac or PC: it shows a code on this screen to pair."
 fi
-if systemctl is-enabled --quiet pixregie-update.timer 2>/dev/null; then
-  say "Daily automatic updates: on (sudo bash install-pi.sh --auto-update off)"
-else
-  say "To update later, re-run this installer (or: sudo bash install-pi.sh --auto-update on)"
-fi
+say "To update later, re-run this installer."
 if [ "$NEED_REBOOT" -eq 1 ]; then
   warn "Reboot once to apply the screen and SD card settings: sudo reboot"
 fi

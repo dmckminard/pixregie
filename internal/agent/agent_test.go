@@ -100,3 +100,21 @@ func TestServeHandler(t *testing.T) {
 		t.Fatalf("POST: %d", w.Code)
 	}
 }
+
+func TestPickOnlyOwnBoard(t *testing.T) {
+	board := func(id string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"board":"` + id + `"}`))
+		}))
+	}
+	other, mine := board("pxb_other"), board("pxb_mine")
+	defer other.Close()
+	defer mine.Close()
+	a, _ := New(Config{Root: t.TempDir(), Token: "x", Board: "pxb_mine"})
+	if got := a.pick(context.Background(), []string{other.URL, mine.URL}); got != mine.URL {
+		t.Fatalf("picked %q", got)
+	}
+	if got := a.pick(context.Background(), []string{other.URL}); got != "" {
+		t.Fatalf("must ignore another board, got %q", got)
+	}
+}

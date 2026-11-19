@@ -25,6 +25,19 @@ func editConfig(path string, f func(*Config) error) {
 	}
 }
 
+// editConfigErr is editConfig for the service: logs instead of exiting.
+func editConfigErr(path string, f func(*Config)) {
+	cfg, err := load(path)
+	if err != nil {
+		log.Printf("config: %v", err)
+		return
+	}
+	f(&cfg)
+	if err := save(path, cfg); err != nil {
+		log.Printf("config: %v", err)
+	}
+}
+
 func listAgents(args []string) {
 	fs := flag.NewFlagSet("agents", flag.ExitOnError)
 	path := configFlag(fs)

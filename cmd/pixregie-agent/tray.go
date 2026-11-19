@@ -135,7 +135,8 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mUpdate *systray.M
 	}()
 
 	start := func(tok string) (*agent.Agent, context.CancelFunc) {
-		a, err := agent.New(agent.Config{Server: cfg.Server, Token: tok, Tracker: tracker})
+		cfg, _ = agentcfg.Load() // pairing may have stored a new board
+		a, err := agent.New(agent.Config{Server: cfg.Server, Token: tok, Tracker: tracker, Board: cfg.Board, OnBoard: saveBoard})
 		if err != nil {
 			alert(err.Error())
 			os.Exit(1)
@@ -260,7 +261,7 @@ func pairFlow(server string, first bool) (string, bool) {
 	}
 	// The code is on the Pi's screen as soon as Pair starts; the first
 	// dialog carries the welcome text.
-	tok, err := agent.Pair(context.Background(), server, computerName(), func(retry bool) (string, bool) {
+	res, err := agent.Pair(context.Background(), server, computerName(), func(retry bool) (string, bool) {
 		msg := intro + "Tape le code affiché sur l'écran du Pi :"
 		if retry {
 			msg = "Code incorrect. Tape le code affiché sur l'écran du Pi :"
@@ -274,11 +275,14 @@ func pairFlow(server string, first bool) (string, bool) {
 		alert("Association impossible : " + err.Error())
 		return "", false
 	}
-	if err := agentcfg.SetToken(tok); err != nil {
+	if err := agentcfg.SetToken(res.Token); err != nil {
 		alert("Impossible d'enregistrer le token : " + err.Error())
 		return "", false
 	}
-	return tok, true
+	c, _ := agentcfg.Load()
+	c.Board = res.Board
+	agentcfg.Save(c)
+	return res.Token, true
 }
 
 func watchUpdates(found chan<- string) {

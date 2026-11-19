@@ -23,7 +23,14 @@ type Config struct {
 	// SleepAfter turns the screen off after this long without activity
 	// ("30m" by default, "0" never).
 	SleepAfter string `json:"sleep_after,omitempty"`
+	// ShowTitles shows session titles (derived from conversations) under
+	// each desk. Default true; set false for a screen others can see.
+	ShowTitles *bool `json:"show_titles,omitempty"`
+	// BoardID is this display's public identifier, created at first start.
+	BoardID string `json:"board_id,omitempty"`
 }
+
+func (c Config) showTitles() bool { return c.ShowTitles == nil || *c.ShowTitles }
 
 // ServerConfig is a remote agent the Pi pulls from, normally through a
 // local SSH tunnel (URL on 127.0.0.1).

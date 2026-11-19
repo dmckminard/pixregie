@@ -27,6 +27,13 @@ type Config struct {
 	Root    string        // transcripts dir; empty = ~/.claude/projects
 	Every   time.Duration // report interval (default 3 s)
 	Tracker *hooks.Tracker
+	// Board is the paired display's identifier. When set, the agent only
+	// reports to a display that presents it, so session data never goes to
+	// another Pixregie board on the same network.
+	Board string
+	// OnBoard is called once the board identifier is learnt (agents paired
+	// before identifiers existed learn it at their first good report).
+	OnBoard func(board string)
 }
 
 // Status is what the tray shows.
@@ -152,15 +159,19 @@ func (a *Agent) tick(ctx context.Context, lastDiscovery *time.Time) {
 		}
 		*lastDiscovery = now
 		dctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		found, err := discover.Find(dctx, 3*time.Second)
+		found, err := discover.FindAll(dctx, 3*time.Second)
 		cancel()
 		if err != nil {
 			a.set(false, "", "Pi introuvable sur le réseau", counts)
 			return
 		}
-		server = found
+		server = a.pick(ctx, found)
+		if server == "" {
+			a.set(false, "", "écran Pixregie introuvable (autre écran détecté, ignoré)", counts)
+			return
+		}
 		a.mu.Lock()
-		a.server = found
+		a.server = server
 		a.mu.Unlock()
 	}
 
@@ -174,7 +185,42 @@ func (a *Agent) tick(ctx context.Context, lastDiscovery *time.Time) {
 		}
 		return
 	}
+	if a.cfg.Board == "" {
+		if id, err := a.hello(ctx, server); err == nil && id != "" {
+			a.cfg.Board = id
+			if a.cfg.OnBoard != nil {
+				a.cfg.OnBoard(id)
+			}
+		}
+	}
 	a.set(true, server, "", counts)
+}
+
+// pick returns the discovered display that is ours. Without a known board
+// (old pairing), the first one.
+func (a *Agent) pick(ctx context.Context, urls []string) string {
+	if a.cfg.Board == "" {
+		return urls[0]
+	}
+	for _, u := range urls {
+		if id, err := a.hello(ctx, u); err == nil && id == a.cfg.Board {
+			return u
+		}
+	}
+	return ""
+}
+
+// hello asks a display for its board identifier.
+func (a *Agent) hello(ctx context.Context, server string) (string, error) {
+	u, _ := url.Parse(server)
+	var out struct {
+		Board string `json:"board"`
+	}
+	code, err := postGet(ctx, a.client, u.JoinPath("/v1/hello").String(), &out)
+	if err != nil || code != http.StatusOK {
+		return "", fmt.Errorf("hello failed")
+	}
+	return out.Board, nil
 }
 
 // Snapshot scans the transcripts and returns what the board should show.

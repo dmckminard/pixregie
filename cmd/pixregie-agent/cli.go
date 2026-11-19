@@ -73,8 +73,8 @@ func run(args []string) {
 		}
 		token = t
 	}
+	cfg, _ := agentcfg.Load()
 	if *server == "" {
-		cfg, _ := agentcfg.Load()
 		*server = cfg.Server
 	}
 
@@ -86,7 +86,10 @@ func run(args []string) {
 		}
 	}()
 
-	a, err := agent.New(agent.Config{Server: *server, Token: token, Root: *root, Every: *every, Tracker: tracker})
+	a, err := agent.New(agent.Config{
+		Server: *server, Token: token, Root: *root, Every: *every, Tracker: tracker,
+		Board: cfg.Board, OnBoard: saveBoard,
+	})
 	if err != nil {
 		fatal(err)
 	}
@@ -137,8 +140,7 @@ func pair(args []string) {
 			*server = found
 		}
 		host, _ := os.Hostname()
-		var err error
-		tok, err = agent.Pair(context.Background(), *server, host, func(retry bool) (string, bool) {
+		res, err := agent.Pair(context.Background(), *server, host, func(retry bool) (string, bool) {
 			if retry {
 				fmt.Fprint(os.Stderr, "Wrong code. ")
 			}
@@ -149,8 +151,9 @@ func pair(args []string) {
 		if err != nil {
 			fatal(err)
 		}
+		tok = res.Token
 		cfg, _ := agentcfg.Load()
-		cfg.Server = *server
+		cfg.Server, cfg.Board = *server, res.Board
 		agentcfg.Save(cfg)
 	}
 	if !agentcfg.ValidToken(tok) {
@@ -190,4 +193,11 @@ func hooksCmd(args []string) {
 		usage()
 		os.Exit(2)
 	}
+}
+
+// saveBoard remembers the display's identifier learnt at the first report.
+func saveBoard(id string) {
+	c, _ := agentcfg.Load()
+	c.Board = id
+	agentcfg.Save(c)
 }

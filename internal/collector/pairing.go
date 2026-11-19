@@ -210,7 +210,7 @@ func (s *Server) pairFinish(w http.ResponseWriter, r *http.Request) {
 	if s.Log != nil {
 		s.Log.Printf("paired new agent %q", label)
 	}
-	writeJSON(w, map[string]any{"token": tok, "label": label})
+	writeJSON(w, map[string]any{"token": tok, "label": label, "board": s.BoardID})
 }
 
 // uniqueLabel avoids two machines sharing a room on the screen.

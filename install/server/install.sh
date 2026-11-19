@@ -16,15 +16,12 @@
 #   - Claude Code hooks for USER (session open/closed, permission prompts);
 #   - a "pixregie-tunnel" account with no shell and no password, whose only
 #     SSH key may open a tunnel to 127.0.0.1:7423 and nothing else;
-#   - with --auto-update, daily signed updates of the agent (off by default:
-#     an automatic update runs new code on the server without you).
 # sshd_config is not modified.
 set -euo pipefail
 
 REPO="dmckminard/pixregie"
 RELEASE_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPrsmtv1WZ/gg6Fg2dz99VsjIpErQ0acaMFV1hBaFQLo pixregie-release"
 BIN="/usr/local/bin/pixregie-agent"
-UPDATER="/usr/local/sbin/pixregie-update"
 CONF_DIR="/etc/pixregie-agent"
 TOKEN_FILE="$CONF_DIR/server-token"
 TUN_USER="pixregie-tunnel"
@@ -41,13 +38,11 @@ die()  { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
 USER_NAME="${SUDO_USER:-}"
 PI_KEY=""
 UNINSTALL=0
-AUTO_UPDATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --user) USER_NAME="${2:-}"; shift 2 ;;
     --pi-key) PI_KEY="${2:-}"; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
-    --auto-update) AUTO_UPDATE=1; shift ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -57,8 +52,8 @@ id "$USER_NAME" >/dev/null 2>&1 || die "no such user: $USER_NAME"
 if [ "$UNINSTALL" -eq 1 ]; then
   say "Removing Pixregie"
   runuser -u "$USER_NAME" -- "$BIN" hooks uninstall 2>/dev/null || true
-  systemctl disable --now pixregie-agent pixregie-agent-update.timer 2>/dev/null || true
-  rm -f "$UNIT" /etc/systemd/system/pixregie-agent-update.{service,timer} "$BIN" "$UPDATER"
+  systemctl disable --now pixregie-agent 2>/dev/null || true
+  rm -f "$UNIT" "$BIN"
   systemctl daemon-reload
   userdel "$TUN_USER" 2>/dev/null || true
   rm -rf "$TUN_HOME" "$CONF_DIR" /var/lib/pixregie-agent
@@ -78,18 +73,16 @@ trap 'rm -rf "$TMP"' EXIT
 
 # --- signed download ---------------------------------------------------------
 say "Downloading $ASSET, checking the release signature"
-for f in SHA256SUMS SHA256SUMS.sig "$ASSET" pixregie-update.sh; do
+for f in SHA256SUMS SHA256SUMS.sig "$ASSET"; do
   curl -fsSL -o "$TMP/$f" "$BASE/$f"
 done
 printf 'pixregie-release namespaces="pixregie-release" %s\n' "$RELEASE_KEY" > "$TMP/allowed_signers"
 ssh-keygen -Y verify -f "$TMP/allowed_signers" -I pixregie-release -n pixregie-release \
   -s "$TMP/SHA256SUMS.sig" < "$TMP/SHA256SUMS" >/dev/null 2>&1 || die "release signature is NOT valid, aborting"
-for f in "$ASSET" pixregie-update.sh; do
-  (cd "$TMP" && grep " $f\$" SHA256SUMS | sha256sum -c --quiet -) || die "checksum mismatch for $f"
-done
+(cd "$TMP" && grep " $ASSET\$" SHA256SUMS | sha256sum -c --quiet -) || die "checksum mismatch for $ASSET"
 install -m 0755 "$TMP/$ASSET" "$BIN"
-install -m 0755 "$TMP/pixregie-update.sh" "$UPDATER"
 say "Installed $("$BIN" version)"
+say "To update later, re-run this installer."
 
 # --- token the Pi presents ------------------------------------------------------
 install -d -m 0700 "$CONF_DIR"
@@ -146,38 +139,12 @@ UMask=0077
 WantedBy=multi-user.target
 EOF
 
-cat >/etc/systemd/system/pixregie-agent-update.service <<EOF
-[Unit]
-Description=Pixregie agent update
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=$UPDATER $ASSET $BIN pixregie-agent
-EOF
-cat >/etc/systemd/system/pixregie-agent-update.timer <<'EOF'
-[Unit]
-Description=Daily Pixregie agent update
-
-[Timer]
-OnCalendar=daily
-RandomizedDelaySec=4h
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
 
 say "Adding Claude Code hooks for $USER_NAME"
 runuser -u "$USER_NAME" -- "$BIN" hooks install
 
 systemctl daemon-reload
 systemctl enable --now pixregie-agent >/dev/null
-if [ "$AUTO_UPDATE" -eq 1 ]; then
-  systemctl enable --now pixregie-agent-update.timer >/dev/null
-  say "Daily signed updates: on"
-fi
 systemctl restart pixregie-agent
 
 # --- tunnel account ---------------------------------------------------------------

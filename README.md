@@ -82,9 +82,8 @@ The script asks for a password for the debug page, then:
   `ssh-copy-id you@pi.local`, then `sudo bash install-pi.sh --harden-ssh`;
 - **protects the SD card**: logs in RAM, no swap file, no access-time
   writes;
-- turns on Debian security updates. Automatic Pixregie updates are
-  available but **off by default** (`--auto-update on`): an automatic
-  update runs new code as root without you.
+- turns on Debian security updates. Pixregie itself never updates on its
+  own: you decide when.
 
 The picture adapts to the screen: native 1080p, 720p, and pixel-perfect
 upscales for 1440p and 4K.
@@ -181,8 +180,6 @@ Changes apply immediately, without restarting anything.
 ## Update
 
 - **Pi and servers**: re-run the installer; the configuration is kept.
-  Or turn on daily signed updates: `sudo bash install-pi.sh --auto-update on`
-  on the Pi, `--auto-update` when installing a server.
 - **macOS and Windows**: the app checks every few hours and shows
   *Mettre à jour vers vX* in its menu; one click installs it and restarts
   the app. The install command and a fresh `Pixregie.exe` also work.
@@ -210,6 +207,26 @@ Pairing is kept across updates.
 `~/.claude/settings.json`; the original file was saved once as
 `settings.json.pixregie-backup`.
 
+## Before you install: what to know
+
+- **The Pi should be dedicated to Pixregie.** The installer takes over the
+  screen and the text console, and tunes the system (logs in RAM, no swap,
+  `noatime`, optional SSH by key only). Backups of the files it edits are
+  kept (`*.pixregie-backup`).
+- **The board trusts your local network.** Agents report over plain HTTP
+  with their token, and the debug page uses a password over HTTP. That is
+  fine at home; on a shared or guest network, someone listening could read
+  session names or reuse a token to show fake sessions (nothing more:
+  tokens give no access to your machines). Prefer a network you control.
+- **Session titles** come from your conversations. If others can see the
+  screen, hide them: `"show_titles": false` in `/etc/pixregie/display.json`
+  (applied within seconds).
+- **Several boards on one network** are fine: each machine reports only to
+  the board it paired with.
+- **Releases are signed by this repository's key.** If you fork Pixregie
+  to publish your own builds, generate your own key and replace
+  `release.pub` (a test checks every copy of it).
+
 ## Troubleshooting
 
 | Symptom                                  | Fix                                                                 |
@@ -228,7 +245,7 @@ password) shows the live screen and what each machine reports.
 
 - **Signed releases**: `SHA256SUMS` is signed with an SSH ed25519 key
   ([`release.pub`](release.pub)). The installers (`ssh-keygen -Y verify`),
-  the Pi and server updaters and the app's updater all refuse a release
+  and the app's updater refuse a release
   whose signature does not verify. To check by hand:
   ```sh
   printf 'pixregie-release namespaces="pixregie-release" %s\n' "$(cat release.pub)" > allowed

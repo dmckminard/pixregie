@@ -55,7 +55,7 @@ func TestKeyCopiesMatch(t *testing.T) {
 	}
 	for _, f := range []string{
 		"../../install/pi/install.sh", "../../install/server/install.sh",
-		"../../install/mac/install.sh", "../../install/common/pixregie-update.sh",
+		"../../install/mac/install.sh",
 	} {
 		b, err := os.ReadFile(f)
 		if err != nil {

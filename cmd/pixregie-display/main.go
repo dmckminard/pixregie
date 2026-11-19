@@ -84,15 +84,24 @@ func serve(args []string) {
 		log.Fatal(err)
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
+	if cfg.BoardID == "" {
+		id, err := collector.NewBoardID()
+		if err != nil {
+			log.Fatal(err)
+		}
+		editConfigErr(*path, func(c *Config) { c.BoardID = id })
+		cfg.BoardID = id
+	}
 	store := collector.NewStore(30*time.Second, 24*time.Hour)
 	pairer := collector.NewPairer()
 	painter := &painter{store: store, pairer: pairer, fbDev: *fbDev, log: logger}
 	srv := &collector.Server{
-		Store:  store,
-		Auth:   collector.Auth{AgentTokens: cfg.Agents, DebugPassword: cfg.DebugPassword},
-		Log:    logger,
-		Extra:  map[string]http.Handler{"/screen.png": http.HandlerFunc(painter.servePNG)},
-		Pairer: pairer,
+		Store:   store,
+		Auth:    collector.Auth{AgentTokens: cfg.Agents, DebugPassword: cfg.DebugPassword},
+		Log:     logger,
+		Extra:   map[string]http.Handler{"/screen.png": http.HandlerFunc(painter.servePNG)},
+		Pairer:  pairer,
+		BoardID: cfg.BoardID,
 		// Re-read the file before adding, so agents added meanwhile with
 		// `add-agent` are not lost.
 		SaveAgent: func(hash, label string) error {
@@ -116,6 +125,7 @@ func serve(args []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	painter.sleepAfter = cfg.sleepAfter()
+	painter.hideTitles = !cfg.showTitles()
 	puller := newPuller(store, logger)
 	puller.set(cfg.Servers)
 	go puller.run(ctx)
@@ -124,6 +134,7 @@ func serve(args []string) {
 		puller.set(c.Servers)
 		store.Retain(c.labels())
 		painter.setSleepAfter(c.sleepAfter())
+		painter.setHideTitles(!c.showTitles())
 	})
 	go painter.run(ctx)
 	go func() {

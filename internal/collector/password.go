@@ -56,3 +56,12 @@ func NewToken() (string, error) {
 	}
 	return "pxr_" + base64.RawURLEncoding.EncodeToString(b), nil
 }
+
+// NewBoardID returns a random public identifier for a display.
+func NewBoardID() (string, error) {
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return "pxb_" + base64.RawURLEncoding.EncodeToString(b), nil
+}

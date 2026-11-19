@@ -22,6 +22,8 @@ type Options struct {
 	Now   time.Time // clock in the header, ages
 	Host  string    // shown in the footer, e.g. "pixregie.local"
 	Scale float64   // 1 → 1280×720, 1.5 → 1920×1080
+	// HideTitles leaves session titles off the screen.
+	HideTitles bool
 	// Pair, when set, shows the pairing code over the room.
 	Pair *collector.PairRequest
 	// IdleHide drops idle sessions untouched for longer than this
@@ -325,7 +327,7 @@ func (c *canvas) desk(x, y, w int, s session.Session, i int, accent color.RGBA, 
 	f := c.f.label
 	c.text(f, x+12, y+140, c.fit(f, s.Project, maxW), cText, 0)
 	line := y + 156
-	if s.Title != "" {
+	if s.Title != "" && !o.HideTitles {
 		c.text(f, x+12, line, c.fit(f, s.Title, maxW), cMuted, 0)
 		line += 16
 	}

@@ -20,8 +20,9 @@ func TestPairAgainstRealCollector(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
+	srv.BoardID = "pxb_test"
 	asked := 0
-	tok, err := Pair(context.Background(), ts.URL, "Mac", func(retry bool) (string, bool) {
+	res, err := Pair(context.Background(), ts.URL, "Mac", func(retry bool) (string, bool) {
 		asked++
 		if !retry {
 			return "000000-wrong", true
@@ -29,8 +30,8 @@ func TestPairAgainstRealCollector(t *testing.T) {
 		req, _ := srv.Pairer.Pending() // what the screen shows
 		return req.Code, true
 	})
-	if err != nil || asked != 2 || len(tok) < 20 {
-		t.Fatalf("tok=%q err=%v asked=%d", tok, err, asked)
+	if err != nil || asked != 2 || len(res.Token) < 20 || res.Board != "pxb_test" {
+		t.Fatalf("res=%+v err=%v asked=%d", res, err, asked)
 	}
 
 	_, err = Pair(context.Background(), ts.URL, "PC", func(bool) (string, bool) { return "", false })

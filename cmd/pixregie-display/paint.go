@@ -32,6 +32,13 @@ type painter struct {
 	mu         sync.Mutex
 	last       *image.RGBA
 	sleepAfter time.Duration // 0: never sleep
+	hideTitles bool
+}
+
+func (p *painter) setHideTitles(v bool) {
+	p.mu.Lock()
+	p.hideTitles = v
+	p.mu.Unlock()
 }
 
 func (p *painter) setSleepAfter(d time.Duration) {
@@ -91,7 +98,10 @@ func (p *painter) run(ctx context.Context) {
 	asleep := false
 	for frame := 0; ; frame++ {
 		now := time.Now()
-		opt := screen.Options{Frame: frame, Night: isNight(now), Now: now, Host: host + ".local", Scale: scale}
+		p.mu.Lock()
+		hide := p.hideTitles
+		p.mu.Unlock()
+		opt := screen.Options{Frame: frame, Night: isNight(now), Now: now, Host: host + ".local", Scale: scale, HideTitles: hide}
 		req, pairing := p.pairer.Pending()
 		if pairing {
 			opt.Pair = &req

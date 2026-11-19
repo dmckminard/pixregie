@@ -42,6 +42,9 @@ type Server struct {
 	Pairer *Pairer
 	// SaveAgent persists a newly paired agent (token hash, label).
 	SaveAgent func(hash, label string) error
+	// BoardID identifies this display, so a paired agent never reports to
+	// another Pixregie board on the same network.
+	BoardID string
 
 	mu sync.RWMutex // guards Auth.AgentTokens, which pairing extends
 }
@@ -49,6 +52,9 @@ type Server struct {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/report", s.report)
+	mux.HandleFunc("GET /v1/hello", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]string{"board": s.BoardID})
+	})
 	if s.Pairer != nil {
 		mux.HandleFunc("POST /v1/pair/start", s.pairStart)
 		mux.HandleFunc("POST /v1/pair/finish", s.pairFinish)

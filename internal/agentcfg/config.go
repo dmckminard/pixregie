@@ -17,6 +17,9 @@ import (
 type Config struct {
 	// Server is the display URL. Empty: found with mDNS at each start.
 	Server string `json:"server,omitempty"`
+	// Board is the paired display's identifier: reports never go to
+	// another Pixregie board on the same network.
+	Board string `json:"board,omitempty"`
 	// AutostartSet records that launch-at-login was turned on once, so a
 	// user who later turns it off is not overridden.
 	AutostartSet bool `json:"autostart_set,omitempty"`

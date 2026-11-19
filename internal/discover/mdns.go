@@ -18,12 +18,25 @@ import (
 
 const Service = "_pixregie._tcp.local."
 
-// Find returns the display's base URL (http://ip:port), or an error if no
-// display answered within the timeout.
+// Find returns the first display that answers (http://ip:port).
 func Find(ctx context.Context, timeout time.Duration) (string, error) {
-	conn, err := net.ListenUDP("udp4", &net.UDPAddr{})
+	all, err := find(ctx, timeout, true)
 	if err != nil {
 		return "", err
+	}
+	return all[0], nil
+}
+
+// FindAll returns every display that answered within the timeout (several
+// boards can share a network).
+func FindAll(ctx context.Context, timeout time.Duration) ([]string, error) {
+	return find(ctx, timeout, false)
+}
+
+func find(ctx context.Context, timeout time.Duration, first bool) ([]string, error) {
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{})
+	if err != nil {
+		return nil, err
 	}
 	defer conn.Close()
 	dst := &net.UDPAddr{IP: net.IPv4(224, 0, 0, 251), Port: 5353}
@@ -34,6 +47,8 @@ func Find(ctx context.Context, timeout time.Duration) (string, error) {
 		deadline = d
 	}
 	buf := make([]byte, 9000)
+	var found []string
+	seen := map[string]bool{}
 	// Ask a few times: the first packet is sometimes lost on Wi-Fi.
 	for attempt := 0; time.Now().Before(deadline); attempt++ {
 		if attempt < 3 {
@@ -45,17 +60,24 @@ func Find(ctx context.Context, timeout time.Duration) (string, error) {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
 				if ctx.Err() != nil {
-					return "", ctx.Err()
+					break
 				}
 				continue
 			}
-			return "", err
+			return nil, err
 		}
-		if url, ok := parseAnswer(buf[:n], from.IP); ok {
-			return url, nil
+		if url, ok := parseAnswer(buf[:n], from.IP); ok && !seen[url] {
+			seen[url] = true
+			found = append(found, url)
+			if first {
+				return found, nil
+			}
 		}
 	}
-	return "", errors.New("no Pixregie display found on the network")
+	if len(found) == 0 {
+		return nil, errors.New("no Pixregie display found on the network")
+	}
+	return found, nil
 }
 
 func minTime(a, b time.Time) time.Time {
