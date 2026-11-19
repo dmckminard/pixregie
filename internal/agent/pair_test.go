@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dmckminard/pixregie/internal/collector"
+	"github.com/dmckminard/pixregie/internal/tlspin"
 )
 
 func TestPairAgainstRealCollector(t *testing.T) {
@@ -17,7 +18,7 @@ func TestPairAgainstRealCollector(t *testing.T) {
 		Pairer: collector.NewPairer(),
 		Log:    log.New(testWriter{t}, "", 0),
 	}
-	ts := httptest.NewServer(srv.Handler())
+	ts := httptest.NewTLSServer(srv.Handler())
 	defer ts.Close()
 
 	srv.BoardID = "pxb_test"
@@ -30,7 +31,8 @@ func TestPairAgainstRealCollector(t *testing.T) {
 		req, _ := srv.Pairer.Pending() // what the screen shows
 		return req.Code, true
 	})
-	if err != nil || asked != 2 || len(res.Token) < 20 || res.Board != "pxb_test" {
+	if err != nil || asked != 2 || len(res.Token) < 20 || res.Board != "pxb_test" ||
+		res.Pin != tlspin.Fingerprint(ts.Certificate().Raw) {
 		t.Fatalf("res=%+v err=%v asked=%d", res, err, asked)
 	}
 
@@ -46,7 +48,7 @@ func (w testWriter) Write(p []byte) (int, error) { w.t.Log(string(p)); return le
 
 func TestPairOldDisplay(t *testing.T) {
 	srv := &collector.Server{Store: collector.NewStore(time.Minute, time.Hour)} // no Pairer
-	ts := httptest.NewServer(srv.Handler())
+	ts := httptest.NewTLSServer(srv.Handler())
 	defer ts.Close()
 	if _, err := Pair(context.Background(), ts.URL, "Mac", func(bool) (string, bool) { return "1", true }); err != ErrPiTooOld {
 		t.Fatalf("got %v", err)

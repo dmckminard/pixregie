@@ -12,12 +12,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/dmckminard/pixregie/internal/discover"
 	"github.com/dmckminard/pixregie/internal/hooks"
 	"github.com/dmckminard/pixregie/internal/session"
+	"github.com/dmckminard/pixregie/internal/tlspin"
 )
 
 // Config for one agent.
@@ -34,6 +36,11 @@ type Config struct {
 	// OnBoard is called once the board identifier is learnt (agents paired
 	// before identifiers existed learn it at their first good report).
 	OnBoard func(board string)
+	// Pin is the SHA-256 of the display's TLS certificate, learnt at
+	// pairing: the agent talks to that board only. Agents paired before
+	// HTTPS learn it at their first accepted report (OnPin).
+	Pin   string
+	OnPin func(pin string)
 }
 
 // Status is what the tray shows.
@@ -56,6 +63,7 @@ func (s Status) Worst() session.Status {
 
 type Agent struct {
 	cfg    Config
+	pinner *tlspin.Pinner
 	client *http.Client
 	host   string
 
@@ -81,14 +89,17 @@ func New(cfg Config) (*Agent, error) {
 		cfg.Tracker = hooks.NewTracker("")
 	}
 	if cfg.Server != "" {
+		cfg.Server = HTTPS(cfg.Server)
 		if err := checkURL(cfg.Server); err != nil {
 			return nil, err
 		}
 	}
 	host, _ := os.Hostname()
+	p := tlspin.NewPinner(cfg.Pin)
 	return &Agent{
 		cfg:     cfg,
-		client:  &http.Client{Timeout: 5 * time.Second},
+		pinner:  p,
+		client:  p.Client(5 * time.Second),
 		host:    host,
 		server:  cfg.Server,
 		kick:    make(chan struct{}, 1),
@@ -96,9 +107,17 @@ func New(cfg Config) (*Agent, error) {
 	}, nil
 }
 
+// HTTPS rewrites a display URL saved before the board served HTTPS.
+func HTTPS(s string) string {
+	if rest, ok := strings.CutPrefix(s, "http://"); ok {
+		return "https://" + rest
+	}
+	return s
+}
+
 func checkURL(s string) error {
 	u, err := url.Parse(s)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return fmt.Errorf("invalid display URL %q", s)
 	}
 	return nil
@@ -185,6 +204,18 @@ func (a *Agent) tick(ctx context.Context, lastDiscovery *time.Time) {
 		}
 		return
 	}
+	if a.cfg.Pin == "" {
+		// First accepted report since HTTPS: the token proved this is our
+		// board, trust its certificate from now on.
+		if fp := a.pinner.Seen(); fp != "" {
+			a.cfg.Pin = fp
+			a.pinner.Pin(fp)
+			a.client = a.pinner.Client(5 * time.Second)
+			if a.cfg.OnPin != nil {
+				a.cfg.OnPin(fp)
+			}
+		}
+	}
 	if a.cfg.Board == "" {
 		if id, err := a.hello(ctx, server); err == nil && id != "" {
 			a.cfg.Board = id
@@ -266,6 +297,9 @@ func (a *Agent) push(server string, list []session.Session) error {
 	req.Header.Set("Authorization", "Bearer "+a.cfg.Token)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := a.client.Do(req)
+	if errors.Is(err, tlspin.ErrPin) {
+		return tlspin.ErrPin
+	}
 	if err != nil {
 		return errors.New("Pi injoignable")
 	}

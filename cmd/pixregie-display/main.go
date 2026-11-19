@@ -6,19 +6,23 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/dmckminard/pixregie/internal/collector"
+	"github.com/dmckminard/pixregie/internal/tlspin"
 )
 
 var version = "dev"
@@ -46,6 +50,8 @@ func main() {
 		removeServer(args)
 	case "set-password":
 		setPassword(args)
+	case "fingerprint":
+		fingerprint(os.Args[2:])
 	case "render":
 		renderPNG(args)
 	case "version", "--version", "-v":
@@ -66,8 +72,19 @@ func usage() {
   pixregie-display add-server   [-config FILE] LABEL URL   (token read on stdin)
   pixregie-display remove-server [-config FILE] LABEL
   pixregie-display set-password [-config FILE]         (reads the password on stdin)
+  pixregie-display fingerprint  [-config FILE]         (the certificate machines pin)
   pixregie-display render       -o FILE.png [-night]    (demo picture, no Pi needed)
   pixregie-display version`)
+}
+
+// certHosts are the names the board answers to, written in its certificate
+// (only informative: agents pin the certificate itself).
+func certHosts() []string {
+	h, err := os.Hostname()
+	if err != nil || h == "" {
+		return []string{"pixregie.local"}
+	}
+	return []string{h, h + ".local"}
 }
 
 func configFlag(fs *flag.FlagSet) *string {
@@ -144,6 +161,15 @@ func serve(args []string) {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    16 << 10,
 	}
+	cert, fp, err := tlspin.LoadOrCreate(filepath.Join(filepath.Dir(*path), "tls.crt"), filepath.Join(filepath.Dir(*path), "tls.key"), certHosts())
+	if err != nil {
+		log.Fatalf("TLS certificate: %v", err)
+	}
+	hs.TLSConfig = tlspin.ServerConfig(cert)
+	ln, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		log.Fatal(err)
+	}
 	go painter.run(ctx)
 	go func() {
 		<-ctx.Done()
@@ -151,9 +177,9 @@ func serve(args []string) {
 		defer cancel()
 		hs.Shutdown(sctx)
 	}()
-	logger.Printf("pixregie-display %s listening on %s (%d agents, %d servers, debug page %s)",
-		version, cfg.Listen, len(cfg.Agents), len(cfg.Servers), onOff(cfg.DebugPassword != ""))
-	if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	logger.Printf("pixregie-display %s listening on https://%s (%d agents, %d servers, debug page %s, certificate %s)",
+		version, cfg.Listen, len(cfg.Agents), len(cfg.Servers), onOff(cfg.DebugPassword != ""), fp)
+	if err := hs.ServeTLS(tlspin.Split(ln), "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
@@ -211,4 +237,21 @@ func onOff(b bool) string {
 		return "on"
 	}
 	return "off"
+}
+
+// fingerprint prints the certificate's SHA-256, to compare with what a
+// machine shows (or the browser's certificate details).
+func fingerprint(args []string) {
+	fs := flag.NewFlagSet("fingerprint", flag.ExitOnError)
+	path := configFlag(fs)
+	fs.Parse(args)
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(*path), "tls.crt"))
+	if err != nil {
+		log.Fatal("no certificate yet (created when the service starts): ", err)
+	}
+	blk, _ := pem.Decode(b)
+	if blk == nil {
+		log.Fatal("invalid certificate file")
+	}
+	fmt.Println(tlspin.Fingerprint(blk.Bytes))
 }

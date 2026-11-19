@@ -14,6 +14,7 @@ import (
 
 	"github.com/dmckminard/pixregie/internal/hooks"
 	"github.com/dmckminard/pixregie/internal/session"
+	"github.com/dmckminard/pixregie/internal/tlspin"
 )
 
 func TestReportsAndStatus(t *testing.T) {
@@ -23,7 +24,7 @@ func TestReportsAndStatus(t *testing.T) {
 		[]byte(`{"type":"user","cwd":"/x/demo","message":{"content":"hi"}}`+"\n"), 0o600)
 
 	var got atomic.Value
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer pxr_good" {
 			w.WriteHeader(401)
 			return
@@ -103,7 +104,7 @@ func TestServeHandler(t *testing.T) {
 
 func TestPickOnlyOwnBoard(t *testing.T) {
 	board := func(id string) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`{"board":"` + id + `"}`))
 		}))
 	}
@@ -116,5 +117,47 @@ func TestPickOnlyOwnBoard(t *testing.T) {
 	}
 	if got := a.pick(context.Background(), []string{other.URL}); got != "" {
 		t.Fatalf("must ignore another board, got %q", got)
+	}
+}
+
+func TestPinLearntThenEnforced(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+	mine := httptest.NewTLSServer(ok)
+	defer mine.Close()
+	// httptest servers all share one built-in certificate: give the
+	// impostor its own.
+	dir := t.TempDir()
+	cert, _, err := tlspin.LoadOrCreate(filepath.Join(dir, "c"), filepath.Join(dir, "k"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	impostor := httptest.NewUnstartedServer(ok)
+	impostor.TLS = tlspin.ServerConfig(cert)
+	impostor.StartTLS()
+	defer impostor.Close()
+
+	learnt := ""
+	a, err := New(Config{Server: mine.URL, Token: "pxr_x", Root: t.TempDir(), Board: "pxb_x",
+		OnPin: func(fp string) { learnt = fp }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var last time.Time
+	a.tick(context.Background(), &last)
+	if want := tlspin.Fingerprint(mine.Certificate().Raw); learnt != want {
+		t.Fatalf("pin %q, want %q", learnt, want)
+	}
+
+	b, _ := New(Config{Server: impostor.URL, Token: "pxr_x", Root: t.TempDir(), Board: "pxb_x", Pin: learnt})
+	b.tick(context.Background(), &last)
+	if st := b.Status(); st.Connected || st.Err != tlspin.ErrPin.Error() {
+		t.Fatalf("impostor accepted: %+v", st)
+	}
+}
+
+func TestOldURLUpgraded(t *testing.T) {
+	a, err := New(Config{Server: "http://192.168.1.50:7421", Root: t.TempDir()})
+	if err != nil || a.cfg.Server != "https://192.168.1.50:7421" {
+		t.Fatalf("%v %q", err, a.cfg.Server)
 	}
 }

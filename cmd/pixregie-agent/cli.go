@@ -88,7 +88,7 @@ func run(args []string) {
 
 	a, err := agent.New(agent.Config{
 		Server: *server, Token: token, Root: *root, Every: *every, Tracker: tracker,
-		Board: cfg.Board, OnBoard: saveBoard,
+		Board: cfg.Board, OnBoard: saveBoard, Pin: cfg.Pin, OnPin: savePin,
 	})
 	if err != nil {
 		fatal(err)
@@ -153,7 +153,7 @@ func pair(args []string) {
 		}
 		tok = res.Token
 		cfg, _ := agentcfg.Load()
-		cfg.Server, cfg.Board = *server, res.Board
+		cfg.Server, cfg.Board, cfg.Pin = *server, res.Board, res.Pin
 		agentcfg.Save(cfg)
 	}
 	if !agentcfg.ValidToken(tok) {
@@ -161,6 +161,9 @@ func pair(args []string) {
 	}
 	if err := agentcfg.SetToken(tok); err != nil {
 		fatal(err)
+	}
+	if *byToken {
+		forgetPin() // the certificate is learnt at the first report
 	}
 	fmt.Fprintln(os.Stderr, "Token saved.")
 }
@@ -199,5 +202,21 @@ func hooksCmd(args []string) {
 func saveBoard(id string) {
 	c, _ := agentcfg.Load()
 	c.Board = id
+	agentcfg.Save(c)
+}
+
+// savePin remembers the display's certificate, learnt at the first report
+// of a machine paired by token or before HTTPS.
+func savePin(fp string) {
+	c, _ := agentcfg.Load()
+	c.Pin = fp
+	agentcfg.Save(c)
+}
+
+// forgetPin drops the certificate after a manual token: it may belong to
+// another board.
+func forgetPin() {
+	c, _ := agentcfg.Load()
+	c.Pin = ""
 	agentcfg.Save(c)
 }

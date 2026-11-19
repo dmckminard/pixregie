@@ -213,11 +213,11 @@ Pairing is kept across updates.
   screen and the text console, and tunes the system (logs in RAM, no swap,
   `noatime`, optional SSH by key only). Backups of the files it edits are
   kept (`*.pixregie-backup`).
-- **The board trusts your local network.** Agents report over plain HTTP
-  with their token, and the debug page uses a password over HTTP. That is
-  fine at home; on a shared or guest network, someone listening could read
-  session names or reuse a token to show fake sessions (nothing more:
-  tokens give no access to your machines). Prefer a network you control.
+- **Everything to the Pi goes over HTTPS with a self-signed certificate.**
+  Each machine records that certificate when it pairs and then refuses any
+  other, so nobody on the network can read or impersonate the board. Your
+  browser cannot know this certificate: it warns once on the Pi's page
+  (see *The Pi's page*).
 - **Session titles** come from your conversations. If others can see the
   screen, hide them from the Pi's page (or `"show_titles": false` in
   `/etc/pixregie/display.json`).
@@ -234,17 +234,25 @@ Pairing is kept across updates.
 | “Pi introuvable sur le réseau”           | Same network? On macOS, allow local network access (System Settings › Privacy & Security › Local Network). Otherwise pair with a token. |
 | “Le Pi doit être mis à jour”             | Update the Pi (see *Update*).                                       |
 | “Token refusé par le Pi”                 | *Associer à nouveau…*                                               |
+| “Certificat du Pi inconnu”               | The Pi was reinstalled from scratch (new certificate), or another device answers at its address. If it is your Pi: *Associer à nouveau…* |
+| Nothing reports after updating the Pi to 0.5 | Machines need 0.5 too (HTTPS): update the app on each.            |
 | A closed session stays on the screen     | It was opened before the hooks were installed: it disappears after an hour idle. |
 | Black borders on the Pi's screen         | Reboot once after installing.                                       |
 | A server's room never appears            | On the Pi: `journalctl -u 'pixregie-tunnel@*' -n 20`; on the server: `journalctl -u pixregie-agent -n 20`. |
 
 ## The Pi's page
 
-`http://<pi-address>:7421` (any user name, your password) shows the live
+`https://<pi-address>:7421` (any user name, your password) shows the live
 screen and what each machine reports, and lets you change settings (session
 titles, screen sleep) and rename or revoke paired machines. Changes apply
 at once. Servers are added and removed from the Pi's shell, since that
 sets up an SSH tunnel.
+
+The browser warns that the certificate is not trusted: the Pi made it
+itself, no authority signed it. Accept it once. To be sure it is your Pi's,
+compare the fingerprint in the browser's certificate details with
+`sudo pixregie-display fingerprint` on the Pi (also printed by
+the installer).
 
 Changes require the password *and* a same-origin request, so another web
 page open in your browser cannot change anything. After 10 wrong passwords
@@ -265,6 +273,12 @@ in 10 minutes the page refuses all attempts for a while.
   command, no other port. The agent there only answers read-only requests
   on loopback, carries its token as a systemd credential and cannot open
   connections outside localhost.
+- **HTTPS, pinned**: the Pi generates its own certificate (ECDSA P-256,
+  kept in `/etc/pixregie`, readable by the service only). A machine pins
+  its SHA-256 at pairing, and the pairing itself only continues with the
+  board that showed the code. Machines paired by token, or before HTTPS,
+  pin it at their first accepted report. Plain `http://` on the same port
+  only redirects to `https://`.
 - The agent's only network traffic is to the Pi; its hook endpoint listens
   on `127.0.0.1` and refuses browser requests.
 - Tokens are random (256 bits), stored hashed on the Pi; the debug password

@@ -44,7 +44,7 @@ func avahiAnswer() []byte {
 
 func TestParseAvahiAnswer(t *testing.T) {
 	url, ok := parseAnswer(avahiAnswer(), net.IPv4(10, 0, 0, 99))
-	if !ok || url != "http://192.168.1.50:7437" {
+	if !ok || url != "https://192.168.1.50:7437" {
 		t.Fatalf("got %q %v", url, ok)
 	}
 }

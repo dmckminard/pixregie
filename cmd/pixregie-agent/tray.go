@@ -136,7 +136,7 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mUpdate *systray.M
 
 	start := func(tok string) (*agent.Agent, context.CancelFunc) {
 		cfg, _ = agentcfg.Load() // pairing may have stored a new board
-		a, err := agent.New(agent.Config{Server: cfg.Server, Token: tok, Tracker: tracker, Board: cfg.Board, OnBoard: saveBoard})
+		a, err := agent.New(agent.Config{Server: cfg.Server, Token: tok, Tracker: tracker, Board: cfg.Board, OnBoard: saveBoard, Pin: cfg.Pin, OnPin: savePin})
 		if err != nil {
 			alert(err.Error())
 			os.Exit(1)
@@ -280,7 +280,7 @@ func pairFlow(server string, first bool) (string, bool) {
 		return "", false
 	}
 	c, _ := agentcfg.Load()
-	c.Board = res.Board
+	c.Board, c.Pin = res.Board, res.Pin
 	agentcfg.Save(c)
 	return res.Token, true
 }
@@ -327,6 +327,7 @@ func askToken(msg string) (string, bool) {
 				alert("Impossible d'enregistrer le token : " + err.Error())
 				return "", false
 			}
+			forgetPin()
 			return t, true
 		}
 		msg = "Ce n'est pas un token Pixregie (il commence par pxr_). Réessaie :"

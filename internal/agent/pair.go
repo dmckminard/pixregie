@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/dmckminard/pixregie/internal/tlspin"
 )
 
 var (
@@ -24,13 +26,16 @@ var (
 type Paired struct {
 	Token string
 	Board string // the display's identifier
+	Pin   string // SHA-256 of the display's TLS certificate
 }
 
 // Pair asks the display for a pairing code (shown on its screen), asks the
 // user for it through askCode, and returns the new token.
 // askCode gets retry=true after a wrong code.
 func Pair(ctx context.Context, server, label string, askCode func(retry bool) (string, bool)) (Paired, error) {
-	c := &http.Client{Timeout: 10 * time.Second}
+	server = HTTPS(server)
+	pinner := tlspin.NewPinner("")
+	c := pinner.Client(10 * time.Second)
 	base, err := url.Parse(server)
 	if err != nil {
 		return Paired{}, err
@@ -51,6 +56,14 @@ func Pair(ctx context.Context, server, label string, askCode func(retry bool) (s
 	if code != http.StatusOK || start.ID == "" {
 		return Paired{}, fmt.Errorf("le Pi a refusé l'association (%d)", code)
 	}
+	// The code is shown by the board that answered: from now on only its
+	// certificate is accepted, so the code cannot be relayed elsewhere.
+	pin := pinner.Seen()
+	if pin == "" {
+		return Paired{}, errors.New("réponse invalide du Pi")
+	}
+	pinner.Pin(pin)
+	c = pinner.Client(10 * time.Second)
 
 	retry := false
 	for {
@@ -72,7 +85,7 @@ func Pair(ctx context.Context, server, label string, askCode func(retry bool) (s
 			if done.Token == "" {
 				return Paired{}, errors.New("réponse invalide du Pi")
 			}
-			return Paired{Token: done.Token, Board: done.Board}, nil
+			return Paired{Token: done.Token, Board: done.Board, Pin: pin}, nil
 		case http.StatusForbidden:
 			retry = true
 		default:
@@ -89,6 +102,9 @@ func postJSON(ctx context.Context, c *http.Client, u string, in, out any) (int, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.Do(req)
+	if errors.Is(err, tlspin.ErrPin) {
+		return 0, tlspin.ErrPin
+	}
 	if err != nil {
 		return 0, errors.New("Pi injoignable")
 	}

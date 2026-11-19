@@ -18,7 +18,7 @@ import (
 
 const Service = "_pixregie._tcp.local."
 
-// Find returns the first display that answers (http://ip:port).
+// Find returns the first display that answers (https://ip:port).
 func Find(ctx context.Context, timeout time.Duration) (string, error) {
 	all, err := find(ctx, timeout, true)
 	if err != nil {
@@ -186,7 +186,7 @@ func parseRRs(msg []byte) ([]rr, error) {
 	return out, nil
 }
 
-// parseAnswer extracts http://ip:port from a response. from is the
+// parseAnswer extracts https://ip:port from a response. from is the
 // responder's address, used when it sent no A record.
 func parseAnswer(msg []byte, from net.IP) (string, bool) {
 	rrs, err := parseRRs(msg)
@@ -224,5 +224,5 @@ func parseAnswer(msg []byte, from net.IP) (string, bool) {
 	if ip == nil || ip.To4() == nil {
 		return "", false
 	}
-	return fmt.Sprintf("http://%s:%d", ip.To4(), port), true
+	return fmt.Sprintf("https://%s:%d", ip.To4(), port), true
 }

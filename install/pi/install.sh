@@ -272,7 +272,7 @@ install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$CONF_DIR"
 FIRST_RUN=0
 if [ ! -f "$CONF" ]; then
   FIRST_RUN=1
-  say "Debug page password (opens http://<pi>:$PORT from your Mac)"
+  say "Debug page password (opens https://<pi>:$PORT from your Mac)"
   while :; do
     read -r -s -p "  password (10+ chars): " pw1 </dev/tty; echo
     read -r -s -p "  again: " pw2 </dev/tty; echo
@@ -423,7 +423,10 @@ fi
 
 IP="$(hostname -I | awk '{print $1}')"
 echo
-say "Done. Debug page: http://$IP:$PORT  (any user name, your password)"
+say "Done. Debug page: https://$IP:$PORT  (any user name, your password; accept the browser warning once)"
+for _ in 1 2 3 4 5; do [ -f "$CONF_DIR/tls.crt" ] && break; sleep 1; done
+say "Certificate fingerprint (the browser shows it in the certificate details):"
+say "  $("$BIN" fingerprint -config "$CONF" 2>/dev/null || echo "run: sudo pixregie-display fingerprint")"
 if [ "$FIRST_RUN" -eq 1 ]; then
   say "Now open the Pixregie app on your Mac or PC: it shows a code on this screen to pair."
 fi
