@@ -176,3 +176,29 @@ func TestTitle(t *testing.T) {
 		t.Fatalf("head title: %q", s.Title)
 	}
 }
+
+// A session waiting for a subagent is silent; the subagent's writes keep it
+// working instead of stale, and subagent files are never sessions.
+func TestSubagentActivity(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel string, mtime time.Time, lines ...string) {
+		p := filepath.Join(root, rel)
+		os.MkdirAll(filepath.Dir(p), 0o700)
+		os.WriteFile(p, []byte(strings.Join(lines, "\n")), 0o600)
+		os.Chtimes(p, mtime, mtime)
+	}
+	lTask := strings.Replace(lToolUse, `"Bash"`, `"Task"`, 1)
+	write("-p/main.jsonl", now.Add(-30*time.Minute), lPrompt, lTask)
+	write("-p/main/subagents/agent-1.jsonl", now.Add(-10*time.Second), lPrompt)
+	write("-p/agent-2.jsonl", now, lPrompt) // older layout
+	got, err := Scan(root, 24*time.Hour, Options{Now: now, StaleAfter: 10 * time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "main" {
+		t.Fatalf("got %+v", got)
+	}
+	if got[0].Status != Working || got[0].Tool != "Task" || !got[0].Modified.Equal(now.Add(-10*time.Second)) {
+		t.Fatalf("got %s/%q %v", got[0].Status, got[0].Tool, got[0].Modified)
+	}
+}

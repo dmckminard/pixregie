@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -21,8 +22,10 @@ func DefaultRoot() (string, error) {
 }
 
 // Scan lists sessions under root whose transcript changed within `within`.
-// Layout: <root>/<encoded-project-dir>/<session-id>.jsonl. Subagent
-// transcripts live in deeper folders and are intentionally ignored.
+// Layout: <root>/<encoded-project-dir>/<session-id>.jsonl. Subagents write
+// to <session-id>/subagents/*.jsonl: they are not sessions of their own, but
+// their writes count as activity of the parent, which is silent while it
+// waits for them (otherwise a long subagent would look stuck).
 func Scan(root string, within time.Duration, opt Options) ([]Session, error) {
 	files, err := filepath.Glob(filepath.Join(root, "*", "*.jsonl"))
 	if err != nil {
@@ -34,10 +37,14 @@ func Scan(root string, within time.Duration, opt Options) ([]Session, error) {
 		if err != nil || !fi.Mode().IsRegular() {
 			continue
 		}
+		id := strings.TrimSuffix(filepath.Base(f), ".jsonl")
+		if strings.HasPrefix(id, "agent-") {
+			continue // subagent transcript (older layout), not a session
+		}
 		if within > 0 && opt.Now.Sub(fi.ModTime()) > within {
 			continue
 		}
-		s, err := ParseFile(f, opt)
+		s, err := parseFile(f, opt, subagentActivity(filepath.Join(filepath.Dir(f), id)))
 		if err != nil {
 			continue // unreadable file: skip, never fail the whole scan
 		}
@@ -45,4 +52,17 @@ func Scan(root string, within time.Duration, opt Options) ([]Session, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Modified.After(out[j].Modified) })
 	return out, nil
+}
+
+// subagentActivity is the newest write among a session's subagent
+// transcripts (zero if none).
+func subagentActivity(dir string) time.Time {
+	var t time.Time
+	files, _ := filepath.Glob(filepath.Join(dir, "*", "*.jsonl"))
+	for _, f := range files {
+		if fi, err := os.Stat(f); err == nil && fi.ModTime().After(t) {
+			t = fi.ModTime()
+		}
+	}
+	return t
 }

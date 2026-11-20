@@ -400,10 +400,13 @@ func (c *canvas) desk(x, y, w int, s session.Session, i int, accent color.RGBA, 
 func label(s session.Session, now time.Time) string {
 	switch s.Status {
 	case session.Working:
-		if s.Tool != "" {
-			return s.Tool
+		switch s.Tool {
+		case "":
+			return "réfléchit…"
+		case "Task", "Agent": // waiting for a subagent
+			return "sous-agent…"
 		}
-		return "réfléchit…"
+		return s.Tool
 	case session.Waiting:
 		if d := now.Sub(s.Modified); d >= time.Minute {
 			return "attend ton OK · " + ago(d)

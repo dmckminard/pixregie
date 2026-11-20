@@ -210,6 +210,12 @@ type Options struct {
 
 // ParseFile reads the end of one transcript and returns its status record.
 func ParseFile(path string, opt Options) (Session, error) {
+	return parseFile(path, opt, time.Time{})
+}
+
+// parseFile also takes the subagents' last write: while they work the
+// transcript itself stays silent.
+func parseFile(path string, opt Options, sub time.Time) (Session, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return Session{}, err
@@ -235,11 +241,14 @@ func ParseFile(path string, opt Options) (Session, error) {
 		LastEvent:  st.last,
 		Modified:   fi.ModTime(),
 	}
+	if sub.After(s.Modified) {
+		s.Modified = sub
+	}
 	if len(st.pending) > 0 {
 		s.Status = Working
 		s.Tool = st.lastTool
 	}
-	if s.Status == Working && opt.StaleAfter > 0 && opt.Now.Sub(fi.ModTime()) > opt.StaleAfter {
+	if s.Status == Working && opt.StaleAfter > 0 && opt.Now.Sub(s.Modified) > opt.StaleAfter {
 		s.Status = Stale
 		s.Tool = ""
 	}
