@@ -150,7 +150,7 @@ func serve(args []string) {
 		painter.setHideTitles(!c.showTitles())
 	}
 	go watchConfig(ctx, *path, logger, applyCfg)
-	upg := &upgrader{request: filepath.Join(filepath.Dir(*path), upgradeRequest), status: upgradeStatus}
+	upg := &upgrader{request: filepath.Join(filepath.Dir(*path), upgradeRequest), status: upgradeStatus, kick: make(chan struct{}, 1)}
 	go upg.watch(ctx)
 	adm := &admin{path: *path, store: store, apply: applyCfg, upgrade: upg}
 	srv.Extra["/v1/admin"] = http.HandlerFunc(adm.get)

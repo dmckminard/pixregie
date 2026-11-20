@@ -150,6 +150,11 @@ function renderUpgrade(u) {
   info.textContent = txt;
   btn.hidden = !u.available || u.state === 'requested' || u.state === 'running';
   renderUpgrade.pending = u.state === 'requested' || u.state === 'running';
+  // A fresh check runs on the Pi when the page opens: ask again shortly.
+  if (!renderUpgrade.retried) {
+    renderUpgrade.retried = true;
+    setTimeout(loadAdmin, 5000);
+  }
   if (renderUpgrade.pending) {
     clearTimeout(renderUpgrade.t);
     renderUpgrade.t = setTimeout(loadAdmin, 3000);

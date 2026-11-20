@@ -23,8 +23,10 @@ type upgrader struct {
 	request string // written by us, removed by the root unit
 	status  string // written by the root unit only
 
-	mu     sync.Mutex
-	latest string
+	mu      sync.Mutex
+	latest  string
+	checked time.Time // last check started
+	kick    chan struct{}
 }
 
 // Paths shared with install-pi.sh.
@@ -33,9 +35,16 @@ const (
 	upgradeStatus  = "/run/pixregie-upgrade/status" // root-owned directory
 )
 
+// recheckEvery: opening the Pi's page checks again if the last check is
+// older than this (GitHub allows 60 anonymous API calls an hour).
+const recheckEvery = 5 * time.Minute
+
 func (u *upgrader) watch(ctx context.Context) {
 	c := &http.Client{Timeout: 30 * time.Second}
 	for {
+		u.mu.Lock()
+		u.checked = time.Now()
+		u.mu.Unlock()
 		cctx, cancel := context.WithTimeout(ctx, time.Minute)
 		tag, err := release.Latest(cctx, c)
 		cancel()
@@ -48,6 +57,7 @@ func (u *upgrader) watch(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(6 * time.Hour):
+		case <-u.kick:
 		}
 	}
 }
@@ -67,7 +77,21 @@ type upgradeView struct {
 	Message   string `json:"message,omitempty"`
 }
 
+// refresh asks the watcher for a new check when the last one is old.
+func (u *upgrader) refresh() {
+	u.mu.Lock()
+	stale := time.Since(u.checked) > recheckEvery
+	u.mu.Unlock()
+	if stale && u.kick != nil {
+		select {
+		case u.kick <- struct{}{}:
+		default:
+		}
+	}
+}
+
 func (u *upgrader) view() upgradeView {
+	u.refresh()
 	latest, avail := u.available()
 	v := upgradeView{Version: version, Latest: latest, Available: avail}
 	// "state<TAB>time<TAB>message", one line, written by the root unit.
