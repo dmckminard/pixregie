@@ -134,12 +134,28 @@ func Render(st collector.State, o Options) *image.RGBA {
 		}
 	}
 
+	// Only machines with something to show get a room. The others (a
+	// server that runs all day with no session, a PC that is off) are a
+	// line in the footer. Colours stay tied to the machine, not the slot.
+	var rooms, resting []placed
+	for i, m := range st.Machines {
+		p := placed{m, machineAccents[i%len(machineAccents)]}
+		if len(m.Sessions) > 0 {
+			rooms = append(rooms, p)
+		} else {
+			resting = append(resting, p)
+		}
+	}
+
 	c.header(counts, o)
-	c.footer(len(st.Machines), nSessions, o)
+	c.footer(len(st.Machines), nSessions, resting, o)
 
 	area := image.Rect(16, 60+16, Width-16, Height-32-16)
-	if len(st.Machines) == 0 {
+	if len(rooms) == 0 {
 		msg := "En attente des agents…"
+		if len(st.Machines) > 0 {
+			msg = "Aucune session en cours"
+		}
 		c.text(c.f.body, area.Min.X+(area.Dx()-c.textWidth(c.f.body, msg, 0))/2, area.Min.Y+area.Dy()/2-10, msg, cMuted, 0)
 		if o.Pair != nil {
 			c.pairing(*o.Pair, th)
@@ -151,7 +167,7 @@ func Render(st collector.State, o Options) *image.RGBA {
 			c.pairing(*o.Pair, th)
 		}
 	}()
-	n := len(st.Machines)
+	n := len(rooms)
 	if n > 4 {
 		n = 4 // more would not fit legibly
 	}
@@ -159,9 +175,14 @@ func Render(st collector.State, o Options) *image.RGBA {
 	w := (area.Dx() - gap*(n-1)) / n
 	for i := 0; i < n; i++ {
 		x := area.Min.X + i*(w+gap)
-		c.room(image.Rect(x, area.Min.Y, x+w, area.Max.Y), st.Machines[i], machineAccents[i%len(machineAccents)], th, o)
+		c.room(image.Rect(x, area.Min.Y, x+w, area.Max.Y), rooms[i].m, rooms[i].accent, th, o)
 	}
 	return c.img
+}
+
+type placed struct {
+	m      collector.Machine
+	accent color.RGBA
 }
 
 // vcenter returns the y that centres text of font f in a band [y0, y0+h).
@@ -193,7 +214,7 @@ func (c *canvas) header(counts map[session.Status]int, o Options) {
 	}
 }
 
-func (c *canvas) footer(machines, sessions int, o Options) {
+func (c *canvas) footer(machines, sessions int, resting []placed, o Options) {
 	y := Height - 32
 	c.fill(0, y, Width, Height, cOutline)
 	host := o.Host
@@ -202,9 +223,33 @@ func (c *canvas) footer(machines, sessions int, o Options) {
 	}
 	left := fmt.Sprintf("%s · %d machine%s · %d session%s", host, machines, plural(machines), sessions, plural(sessions))
 	ty := c.vcenter(c.f.body, y, 32) - 2
-	c.text(c.f.body, 24, ty, left, cMuted, 0)
+	x := 24 + c.text(c.f.body, 24, ty, left, cMuted, 0)
 	right := "mis à jour " + o.Now.Format("15:04:05")
-	c.text(c.f.body, Width-24-c.textWidth(c.f.body, right, 0), ty, right, cMuted, 0)
+	rx := Width - 24 - c.textWidth(c.f.body, right, 0)
+	c.text(c.f.body, rx, ty, right, cMuted, 0)
+
+	// Machines without a room: name and whether they are reachable.
+	for _, p := range resting {
+		state := "au repos"
+		if !p.m.Online {
+			state = "hors ligne · " + ago(o.Now.Sub(p.m.LastSeen))
+		}
+		name := p.m.Name + " "
+		nw := c.textWidth(c.f.body, name, 0)
+		need := 32 + 12 + 8 + nw + c.textWidth(c.f.body, state, 0)
+		if x+need > rx-24 {
+			break
+		}
+		x += 32
+		c.fill(x, y+10, x+12, y+22, p.accent)
+		x += 12 + 8
+		x += c.text(c.f.body, x, ty, name, cText, 0)
+		col := cMuted
+		if !p.m.Online {
+			col = hex("#f87171")
+		}
+		x += c.text(c.f.body, x, ty, state, col, 0)
+	}
 }
 
 func (c *canvas) room(r image.Rectangle, m collector.Machine, accent color.RGBA, th theme, o Options) {

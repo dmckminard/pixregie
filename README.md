@@ -54,7 +54,10 @@ Claude account, and it consumes no tokens.
 | blinking red screen           | was working, nothing moved for 10 minutes       |
 | dark screen, eyes closed      | the turn is over: your move                     |
 
-A room's **ON AIR** light is on while any of its sessions works. Closed
+Only machines with sessions to show get a room. The others are listed in
+the footer: *au repos* (reachable, nothing running, e.g. a server between
+two sessions) or *hors ligne* in red (the Pi has lost it). A room's
+**ON AIR** light is on while any of its sessions works. Closed
 sessions disappear; idle sessions not known to be open are hidden after an
 hour. Lamps turn on at night (19:00 to 07:00). After 30 minutes without
 activity the screen goes to sleep, and wakes up at the first sign of
