@@ -19,7 +19,7 @@ Claude account, and it consumes no tokens.
  ┌──────────────────────────┐    LAN, HTTP     ┌──────────────────────────┐
  │ Pixregie (menu-bar app)  │ ───────────────▶ │ pixregie-display         │
  │  reads ~/.claude/projects│  every 3 s       │  collector + screen      │
- │  + 3 Claude Code hooks   │                  │  + debug page            │
+ │  + Claude Code hooks     │                  │  + debug page            │
  └──────────────────────────┘                  └────────────┬─────────────┘
                                                             │ SSH tunnel opened
  Server (VPS, VS Code Remote)                               │ by the Pi, can only
@@ -35,8 +35,12 @@ Claude account, and it consumes no tokens.
   machine**. The session title is the one exception derived from the
   conversation (it is the name Claude Code shows for the session); it only
   travels to the Pi on your local network.
-- Three Claude Code hooks tell the agent when a session opens, closes, or
-  waits for a permission. They only carry the session id.
+- Claude Code hooks tell the agent the moment a session opens or closes,
+  a turn starts or ends, or a permission is asked. Each runs a local `curl`
+  to the agent (in the background for the per-turn ones, so Claude Code
+  never waits), fires at most once per turn, and sends nothing to the model.
+  Sessions started before the hooks were installed fall back to reading
+  the session files.
 - Machines on your network find the Pi with mDNS (`_pixregie._tcp`) and
   push to it with a per-machine token. Servers elsewhere cannot reach the
   Pi, so the Pi pulls from them through an SSH tunnel it opens itself.
@@ -46,15 +50,15 @@ Claude account, and it consumes no tokens.
 | On the screen                 | Meaning                                         |
 |-------------------------------|-------------------------------------------------|
 | green screen, scrolling lines | Claude is writing or a tool is running          |
-| amber screen + `!` bubble     | Claude Code waits for your permission           |
+| amber screen + `!` bubble     | Claude Code waits for your permission (the desk flashes after 5 minutes) |
 | blinking red screen           | was working, nothing moved for 10 minutes       |
 | dark screen, eyes closed      | the turn is over: your move                     |
 
 A room's **ON AIR** light is on while any of its sessions works. Closed
 sessions disappear; idle sessions not known to be open are hidden after an
 hour. Lamps turn on at night (19:00 to 07:00). After 30 minutes without
-activity the screen goes to sleep, and wakes up as soon as a session works
-or waits (`"sleep_after"` in `/etc/pixregie/display.json`, `"0"` to
+activity the screen goes to sleep, and wakes up at the first sign of
+activity (`"sleep_after"` in `/etc/pixregie/display.json`, `"0"` to
 disable). The picture moves by two pixels every ten minutes so that static
 parts do not mark the panel.
 

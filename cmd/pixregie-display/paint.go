@@ -66,6 +66,24 @@ func active(st collector.State, pairing bool) bool {
 	return false
 }
 
+// latestActivity is the newest transcript write on the board: any new
+// activity wakes the screen, even an exchange so short that no "working"
+// state was ever reported in between.
+func latestActivity(st collector.State) time.Time {
+	var t time.Time
+	for _, m := range st.Machines {
+		if !m.Online {
+			continue
+		}
+		for _, s := range m.Sessions {
+			if s.Modified.After(t) {
+				t = s.Modified
+			}
+		}
+	}
+	return t
+}
+
 // shiftEvery moves the picture by a couple of pixels now and then, so
 // static parts (header, walls) do not mark the panel.
 const shiftEvery = 10 * time.Minute
@@ -95,6 +113,7 @@ func (p *painter) run(ctx context.Context) {
 	t := time.NewTicker(frameEvery)
 	defer t.Stop()
 	lastActive := time.Now()
+	var lastSeen time.Time // newest activity seen so far
 	asleep := false
 	for frame := 0; ; frame++ {
 		now := time.Now()
@@ -113,6 +132,12 @@ func (p *painter) run(ctx context.Context) {
 		sleepAfter := p.sleepAfter
 		p.mu.Unlock()
 
+		if a := latestActivity(st); a.After(lastSeen) {
+			if !lastSeen.IsZero() {
+				lastActive = now
+			}
+			lastSeen = a
+		}
 		if active(st, pairing) {
 			lastActive = now
 		}

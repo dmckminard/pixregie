@@ -14,8 +14,19 @@ import (
 // be updated or removed without touching the user's own hooks.
 const marker = "# pixregie-hook"
 
-// Events the agent needs. Each fires a few times per session at most.
-var Events = []string{"SessionStart", "SessionEnd", "Notification"}
+// Events the agent needs. Each fires once per turn at most, never per tool
+// call, and runs a local curl: nothing reaches the model.
+var Events = []string{
+	"SessionStart", "SessionEnd", "Notification",
+	"UserPromptSubmit", "Stop", "StopFailure", "PermissionRequest",
+}
+
+// background events run asynchronously: Claude Code does not even wait
+// for curl. SessionStart/End stay synchronous so they are not lost when a
+// session exits right away (they are bounded by curl's 1 s anyway).
+var background = map[string]bool{
+	"UserPromptSubmit": true, "Stop": true, "StopFailure": true, "PermissionRequest": true,
+}
 
 // Command is the hook command: forward the payload, never block or fail
 // Claude Code (1 s timeout, errors ignored). Runs in bash on macOS, Linux
@@ -127,9 +138,11 @@ func edit(path string, add bool) (bool, error) {
 			}
 		}
 		if add {
-			kept = append(kept, map[string]any{
-				"hooks": []any{map[string]any{"type": "command", "command": Command(), "timeout": 5}},
-			})
+			h := map[string]any{"type": "command", "command": Command(), "timeout": 5}
+			if background[ev] {
+				h["async"] = true
+			}
+			kept = append(kept, map[string]any{"hooks": []any{h}})
 		}
 		if len(kept) == 0 {
 			delete(hooks, ev)

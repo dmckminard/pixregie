@@ -160,3 +160,36 @@ func TestBindIsExclusive(t *testing.T) {
 		t.Fatal("a second instance could bind the hook port")
 	}
 }
+
+func TestTurnHooks(t *testing.T) {
+	now := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	tr := NewTracker("")
+	tr.now = func() time.Time { return now }
+	s := []session.Session{{ID: "s", Status: session.Idle, Modified: now.Add(-time.Hour)}}
+	status := func() session.Status { return tr.Apply(s)[0].Status }
+
+	// Prompt submitted, transcript not written yet (thinking): working.
+	tr.Handle(Event{SessionID: "s", HookEventName: "UserPromptSubmit"})
+	if status() != session.Working {
+		t.Fatal("prompt should mean working")
+	}
+	// Permission asked: waiting.
+	tr.Handle(Event{SessionID: "s", HookEventName: "PermissionRequest"})
+	if status() != session.Waiting {
+		t.Fatal("permission request should mean waiting")
+	}
+	// Turn over, even if the scan still sees a tool running: idle.
+	s[0].Status, s[0].Modified = session.Working, now
+	now = now.Add(time.Second)
+	tr.Handle(Event{SessionID: "s", HookEventName: "Stop"})
+	if status() != session.Idle {
+		t.Fatal("stop should mean idle")
+	}
+	// A turn silent for too long: stale (Stop never came, e.g. crash).
+	now = now.Add(time.Minute)
+	tr.Handle(Event{SessionID: "s", HookEventName: "UserPromptSubmit"})
+	now = now.Add(StaleAfter + time.Minute)
+	if status() != session.Stale {
+		t.Fatalf("silent turn should be stale, got %s", status())
+	}
+}

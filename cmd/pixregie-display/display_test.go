@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dmckminard/pixregie/internal/collector"
+	"github.com/dmckminard/pixregie/internal/session"
 )
 
 func TestPullerUsesConfigLabel(t *testing.T) {
@@ -65,5 +66,16 @@ func TestWatchConfigReloads(t *testing.T) {
 func TestSleepAfter(t *testing.T) {
 	if (Config{}).sleepAfter() != 30*time.Minute || (Config{SleepAfter: "0"}).sleepAfter() != 0 || (Config{SleepAfter: "2h"}).sleepAfter() != 2*time.Hour {
 		t.Fatal("sleep_after parsing")
+	}
+}
+
+func TestLatestActivity(t *testing.T) {
+	old := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	st := collector.State{Machines: []collector.Machine{
+		{Online: true, Sessions: []session.Session{{Modified: old}, {Modified: old.Add(time.Minute)}}},
+		{Online: false, Sessions: []session.Session{{Modified: old.Add(time.Hour)}}},
+	}}
+	if got := latestActivity(st); !got.Equal(old.Add(time.Minute)) {
+		t.Fatalf("got %v", got)
 	}
 }

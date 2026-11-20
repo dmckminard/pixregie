@@ -90,6 +90,10 @@ var counterOrder = []struct {
 	{session.Idle, hex("#4b4763")},
 }
 
+// UrgentAfter is how long a session may wait for an answer before its
+// desk starts flashing.
+const UrgentAfter = 5 * time.Minute
+
 type theme struct{ bg, wall, floor, floorEdge, deskTop, desk color.RGBA }
 
 var (
@@ -277,7 +281,13 @@ func (c *canvas) desk(x, y, w int, s session.Session, i int, accent color.RGBA, 
 	if !ok {
 		st = styles[session.Idle]
 	}
-	if o.Night && s.Status != session.Idle {
+	// Waiting for a while: the desk flashes so it shows from across the
+	// room.
+	urgent := s.Status == session.Waiting && o.Now.Sub(s.Modified) >= UrgentAfter
+	flash := urgent && o.Frame%2 == 0
+	if flash {
+		c.lamp(x+92, y+70, 120, hex("#fbbf24"), 0.45)
+	} else if o.Night && s.Status != session.Idle {
 		c.lamp(x+92, y+70, 70, hex("#fbd678"), 0.16)
 	}
 	if s.Status == session.Waiting {
@@ -321,6 +331,14 @@ func (c *canvas) desk(x, y, w int, s session.Session, i int, accent color.RGBA, 
 	c.fill(x+20, y+106, x+20+152, y+106+28, cOutline)
 	c.fill(x+24, y+106, x+24+144, y+106+24, th.desk)
 
+	if flash {
+		amber := hex("#fbbf24")
+		c.fill(x+4, y-4, x+w-4, y, amber)
+		c.fill(x+4, y+134, x+w-4, y+138, amber)
+		c.fill(x+4, y-4, x+8, y+138, amber)
+		c.fill(x+w-8, y-4, x+w-4, y+138, amber)
+	}
+
 	// Three lines in the narrow VT323 face, across the whole column:
 	// project, session title, state.
 	maxW := w - 16
@@ -342,6 +360,9 @@ func label(s session.Session, now time.Time) string {
 		}
 		return "réfléchit…"
 	case session.Waiting:
+		if d := now.Sub(s.Modified); d >= time.Minute {
+			return "attend ton OK · " + ago(d)
+		}
 		return "attend ton OK"
 	case session.Stale:
 		return "figée · " + ago(now.Sub(s.Modified))

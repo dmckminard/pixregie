@@ -1,6 +1,8 @@
 // Package hooks receives Claude Code hook events on a local port and turns
-// them into facts the transcripts cannot give: which sessions are actually
-// open, and which one is waiting for a permission answer.
+// them into facts the transcripts cannot give, the moment they happen:
+// which sessions are actually open, when a turn starts and ends, and which
+// one is waiting for a permission answer. Without hooks (sessions started
+// before installing, old Claude Code) the transcripts alone still work.
 //
 // Only the session id and the event kind are kept. Hook payloads also carry
 // paths and messages; those are read to classify the event and dropped.
@@ -32,6 +34,8 @@ type state struct {
 	Open    bool      `json:"open"`
 	Closed  bool      `json:"closed"`
 	Waiting time.Time `json:"waiting,omitempty"` // permission prompt shown at
+	Busy    time.Time `json:"busy,omitempty"`    // last prompt submitted at
+	Done    time.Time `json:"done,omitempty"`    // last turn finished at
 	Seen    time.Time `json:"seen"`
 }
 
@@ -83,7 +87,13 @@ func (t *Tracker) Handle(e Event) {
 		st.Open, st.Closed, st.Waiting = true, false, time.Time{}
 	case "SessionEnd":
 		st.Open, st.Closed, st.Waiting = false, true, time.Time{}
-	case "Notification":
+	case "UserPromptSubmit":
+		st.Open, st.Closed, st.Waiting, st.Busy = true, false, time.Time{}, now
+	case "Stop", "StopFailure":
+		st.Open, st.Closed, st.Waiting, st.Done = true, false, time.Time{}, now
+	case "PermissionRequest":
+		st.Open, st.Closed, st.Waiting = true, false, now
+	case "Notification": // older Claude Code: no PermissionRequest event
 		st.Open, st.Closed = true, false
 		if isPermission(e) {
 			st.Waiting = now
@@ -98,10 +108,14 @@ func (t *Tracker) Handle(e Event) {
 //   - sessions Claude Code reported closed are dropped;
 //   - sessions reported open are flagged Open;
 //   - a permission prompt makes the session Waiting until the transcript
-//     moves again (the tool ran or was refused).
+//     moves again (the tool ran or was refused);
+//   - a turn in progress (prompt submitted, not finished) is Working even
+//     while the transcript is quiet (thinking), and Stale after StaleAfter
+//     of silence; a finished turn is Idle at once.
 func (t *Tracker) Apply(in []session.Session) []session.Session {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	now := t.now()
 	out := in[:0:0]
 	for _, s := range in {
 		st := t.m[s.ID]
@@ -122,9 +136,34 @@ func (t *Tracker) Apply(in []session.Session) []session.Session {
 				st.Waiting = time.Time{}
 			}
 		}
+		if s.Status != session.Waiting {
+			s = applyTurn(s, st, now)
+		}
 		out = append(out, s)
 	}
 	return out
+}
+
+// StaleAfter is how long a turn in progress may stay silent before the
+// session is shown as stuck (same as the transcript scan).
+const StaleAfter = 10 * time.Minute
+
+func applyTurn(s session.Session, st *state, now time.Time) session.Session {
+	switch {
+	case !st.Busy.IsZero() && st.Busy.After(st.Done):
+		last := s.Modified
+		if st.Busy.After(last) {
+			last = st.Busy
+		}
+		if now.Sub(last) > StaleAfter {
+			s.Status = session.Stale
+		} else if s.Status == session.Idle || s.Status == session.Stale {
+			s.Status = session.Working
+		}
+	case !st.Done.IsZero() && !s.Modified.After(st.Done.Add(2*time.Second)):
+		s.Status, s.Tool = session.Idle, ""
+	}
+	return s
 }
 
 // Prune forgets sessions not heard of for a week.
