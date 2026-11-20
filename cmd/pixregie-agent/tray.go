@@ -175,7 +175,8 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mUpdate *systray.M
 	// Updates: checked shortly after start, then every 6 hours. Installing
 	// is the user's choice, from the menu.
 	updates := make(chan string, 1)
-	go watchUpdates(updates)
+	recheck := make(chan struct{}, 1)
+	go watchUpdates(updates, recheck)
 	pending := ""
 
 	// Menu-bar appearance can change (dark mode at sunset): redraw the
@@ -208,6 +209,10 @@ func loop(mStatus, mCounts, mRefresh, mDebug, mLogin, mToken, mUpdate *systray.M
 			render()
 		case <-mRefresh.ClickedCh:
 			a.Refresh()
+			select {
+			case recheck <- struct{}{}:
+			default:
+			}
 		case <-mDebug.ClickedCh:
 			if s := a.Status().Server; s != "" {
 				openURL(s)
@@ -285,9 +290,14 @@ func pairFlow(server string, first bool) (string, bool) {
 	return res.Token, true
 }
 
-func watchUpdates(found chan<- string) {
+// watchUpdates looks for a newer release a minute after launch, every
+// 6 hours, and when the user clicks Rafraîchir (at most once a minute).
+func watchUpdates(found chan<- string, recheck <-chan struct{}) {
 	c := &http.Client{Timeout: 30 * time.Second}
-	time.Sleep(time.Minute)
+	select {
+	case <-time.After(time.Minute):
+	case <-recheck:
+	}
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		tag, err := release.Latest(ctx, c)
@@ -298,7 +308,11 @@ func watchUpdates(found chan<- string) {
 			default:
 			}
 		}
-		time.Sleep(6 * time.Hour)
+		time.Sleep(time.Minute) // GitHub's API allows 60 calls an hour
+		select {
+		case <-time.After(6 * time.Hour):
+		case <-recheck:
+		}
 	}
 }
 

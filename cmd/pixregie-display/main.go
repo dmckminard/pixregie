@@ -145,12 +145,15 @@ func serve(args []string) {
 		painter.setHideTitles(!c.showTitles())
 	}
 	go watchConfig(ctx, *path, logger, applyCfg)
-	adm := &admin{path: *path, store: store, apply: applyCfg}
+	upg := &upgrader{request: filepath.Join(filepath.Dir(*path), upgradeRequest), status: upgradeStatus}
+	go upg.watch(ctx)
+	adm := &admin{path: *path, store: store, apply: applyCfg, upgrade: upg}
 	srv.Extra["/v1/admin"] = http.HandlerFunc(adm.get)
 	srv.AdminPost = map[string]http.Handler{
 		"/v1/admin/settings": http.HandlerFunc(adm.settings),
 		"/v1/admin/rename":   http.HandlerFunc(adm.rename),
 		"/v1/admin/revoke":   http.HandlerFunc(adm.revoke),
+		"/v1/admin/upgrade":  http.HandlerFunc(upg.post),
 	}
 	hs := &http.Server{
 		Addr:              cfg.Listen,

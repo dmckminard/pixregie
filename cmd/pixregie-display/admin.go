@@ -15,9 +15,10 @@ import (
 // change goes through the config file, so the CLI and the page always
 // agree, and is applied at once.
 type admin struct {
-	path  string
-	store *collector.Store
-	apply func(Config)
+	path    string
+	store   *collector.Store
+	apply   func(Config)
+	upgrade *upgrader
 }
 
 type machineView struct {
@@ -60,6 +61,7 @@ func (a *admin) get(w http.ResponseWriter, r *http.Request) {
 		"show_titles": cfg.showTitles(),
 		"sleep_after": sleep,
 		"machines":    list,
+		"upgrade":     a.upgrade.view(),
 	})
 }
 

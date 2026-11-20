@@ -79,3 +79,31 @@ func TestLatestActivity(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func TestUpgradeRequest(t *testing.T) {
+	dir := t.TempDir()
+	u := &upgrader{request: filepath.Join(dir, upgradeRequest), status: filepath.Join(dir, "status")}
+	post := func() int {
+		w := httptest.NewRecorder()
+		u.post(w, httptest.NewRequest("POST", "/v1/admin/upgrade", nil))
+		return w.Code
+	}
+	if post() != http.StatusConflict {
+		t.Fatal("no newer release: must refuse")
+	}
+	old := version
+	version = "0.6.1"
+	defer func() { version = old }()
+	u.latest = "v99.0.0"
+	if post() != http.StatusAccepted || u.view().State != "requested" {
+		t.Fatal("request not recorded")
+	}
+	if post() != http.StatusConflict {
+		t.Fatal("second request must be refused while pending")
+	}
+	os.Remove(u.request)
+	os.WriteFile(u.status, []byte("error\t2026-11-20T10:00:00+01:00\tdownload failed\n"), 0o644)
+	if v := u.view(); v.State != "error" || v.Message != "download failed" {
+		t.Fatalf("%+v", v)
+	}
+}

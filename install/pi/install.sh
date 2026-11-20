@@ -12,6 +12,7 @@
 #   sudo bash install-pi.sh --remove-server NAME
 #   sudo bash install-pi.sh --harden-ssh               SSH by key only (asked during install)
 #   sudo bash install-pi.sh --uninstall
+#   sudo bash install-pi.sh --update                   unattended upgrade (used by the Pi page)
 #
 # Idempotent: re-running upgrades and keeps the configuration. Every download
 # is checked against SHA256SUMS signed with the Pixregie release key.
@@ -23,7 +24,10 @@ VERSION="${PIXREGIE_VERSION:-latest}"
 SVC_USER="pixregie-display"
 TUN_USER="pixregie-tunnel"
 BIN="/usr/local/bin/pixregie-display"
-UPDATER="/usr/local/sbin/pixregie-update"
+UPDATER="/usr/local/sbin/pixregie-update" # old automatic updater, removed
+UPGRADER="/usr/local/sbin/pixregie-upgrade"
+UPGRADE_UNIT="/etc/systemd/system/pixregie-upgrade.service"
+UPGRADE_PATH="/etc/systemd/system/pixregie-upgrade.path"
 CONF_DIR="/etc/pixregie"
 CONF="$CONF_DIR/display.json"
 # Outside $CONF_DIR on purpose: that folder belongs to the display service
@@ -40,6 +44,7 @@ die()  { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
 ask()  { local a; read -r -p "$1 " a </dev/tty; printf '%s' "$a"; }
 
 [ "$(id -u)" -eq 0 ] || die "run with sudo"
+UNATTENDED=0
 
 as_svc() { runuser -u "$SVC_USER" -- "$@"; }
 need_installed() { [ -x "$BIN" ] && [ -f "$CONF" ] || die "not installed yet: run sudo bash install-pi.sh first"; }
@@ -89,7 +94,8 @@ uninstall() {
   for u in /etc/systemd/system/pixregie-tunnel@*.service; do
     [ -e "$u" ] && systemctl disable --now "$(basename "$u")" 2>/dev/null || true
   done
-  rm -f "$UNIT" "$AVAHI" "$BIN" \
+  systemctl disable --now pixregie-upgrade.path 2>/dev/null || true
+  rm -f "$UNIT" "$AVAHI" "$BIN" "$UPGRADER" "$UPGRADE_UNIT" "$UPGRADE_PATH" \
         /etc/systemd/system/pixregie-tunnel@.service /etc/udev/rules.d/70-pixregie-fb.rules
   systemctl daemon-reload
   systemctl enable getty@tty1 2>/dev/null || true
@@ -269,6 +275,7 @@ case "${1:-}" in
   --add-server) [ -n "${3:-}" ] || die "usage: --add-server NAME user@host[:port]"; add_server "$2" "$3"; exit 0 ;;
   --remove-server) [ -n "${2:-}" ] || die "usage: --remove-server NAME"; remove_server "$2"; exit 0 ;;
   --harden-ssh) harden_ssh; exit 0 ;;
+  --update) need_installed; UNATTENDED=1 ;;
   "") ;;
   *) die "unknown option: $1" ;;
 esac
@@ -405,6 +412,60 @@ UMask=0077
 WantedBy=multi-user.target
 EOF
 
+# --- update button of the Pi page --------------------------------------------
+# The display service cannot replace its own files. The page's button drops
+# $CONF_DIR/upgrade.request; this root unit then fetches the LATEST
+# install-pi.sh, checks it against SHA256SUMS signed with the release key and
+# runs it with --update. The request's content is never read; in the
+# service's directory root only deletes the request; the status goes to a
+# root-owned directory.
+cat >"$UPGRADER" <<EOF
+#!/usr/bin/env bash
+set -uo pipefail
+REQ="$CONF_DIR/upgrade.request"
+STATUS_DIR=/run/pixregie-upgrade
+BASE="https://github.com/$REPO/releases/latest/download"
+KEY="$RELEASE_KEY"
+rm -f "\$REQ"
+install -d -m 0755 "\$STATUS_DIR"
+status() { printf '%s\t%s\t%s\n' "\$1" "\$(date -Is)" "\${2:-}" > "\$STATUS_DIR/status.tmp" && mv "\$STATUS_DIR/status.tmp" "\$STATUS_DIR/status"; }
+fail() { status error "\$1"; echo "\$1" >&2; exit 1; }
+status running
+TMP="\$(mktemp -d)"; trap 'rm -rf "\$TMP"' EXIT
+cd "\$TMP" || fail "no temp dir"
+for f in SHA256SUMS SHA256SUMS.sig install-pi.sh; do
+  curl -fsSL --proto '=https' -o "\$f" "\$BASE/\$f" || fail "download of \$f failed"
+done
+printf 'pixregie-release namespaces="pixregie-release" %s\n' "\$KEY" > allowed_signers
+ssh-keygen -Y verify -f allowed_signers -I pixregie-release -n pixregie-release -s SHA256SUMS.sig < SHA256SUMS >/dev/null 2>&1 \
+  || fail "release signature is not valid"
+grep ' install-pi.sh\$' SHA256SUMS | sha256sum -c --quiet - || fail "install-pi.sh checksum mismatch"
+bash ./install-pi.sh --update || fail "installer failed: journalctl -u pixregie-upgrade"
+status ok "\$($BIN version 2>/dev/null)"
+EOF
+chmod 0755 "$UPGRADER"
+cat >"$UPGRADE_UNIT" <<EOF
+[Unit]
+Description=Pixregie update requested from the Pi page
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$UPGRADER
+TimeoutStartSec=15min
+EOF
+cat >"$UPGRADE_PATH" <<EOF
+[Unit]
+Description=Watch for a Pixregie update request
+
+[Path]
+PathExists=$CONF_DIR/upgrade.request
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # --- mDNS: agents find the board by service type, not by host name ----------
 if [ -d /etc/avahi/services ]; then
   cat >"$AVAHI" <<EOF
@@ -432,11 +493,12 @@ migrate_tunnel_dir
 [ -f /etc/systemd/system/pixregie-tunnel@.service ] && tunnel_unit
 systemctl daemon-reload
 systemctl enable --now pixregie-display >/dev/null
+systemctl enable --now pixregie-upgrade.path >/dev/null
 systemctl restart pixregie-display
 
 # --- SSH ---------------------------------------------------------------------
 # Asked once; later: sudo bash install-pi.sh --harden-ssh
-if [ ! -f /etc/ssh/sshd_config.d/10-pixregie-hardening.conf ] && [ ! -f "$CONF_DIR/.ssh-asked" ]; then
+if [ "$UNATTENDED" -eq 0 ] && [ ! -f /etc/ssh/sshd_config.d/10-pixregie-hardening.conf ] && [ ! -f "$CONF_DIR/.ssh-asked" ]; then
   touch "$CONF_DIR/.ssh-asked"
   if [ "$(ask "Allow SSH logins by key only (recommended)? [Y/n]")" != n ]; then
     harden_ssh

@@ -126,8 +126,40 @@ async function loadAdmin() {
     document.getElementById('show-titles').checked = a.show_titles;
     document.getElementById('sleep-after').value = a.sleep_after;
     renderPaired(a.machines || []);
-  } catch (_) {}
+    renderUpgrade(a.upgrade || {});
+  } catch (_) {
+    // The board restarts at the end of an update: keep asking.
+    if (renderUpgrade.pending) setTimeout(loadAdmin, 3000);
+  }
 }
+
+// Pi update: the page asks, a root service on the Pi installs the latest
+// signed release and restarts the board.
+function renderUpgrade(u) {
+  const info = document.getElementById('upgrade-info');
+  const btn = document.getElementById('upgrade-btn');
+  let txt = 'Version ' + (u.version || '?');
+  if (u.state === 'requested' || u.state === 'running') {
+    txt += ' · mise à jour en cours…';
+  } else if (u.available) {
+    txt += ' · ' + u.latest + ' disponible';
+  } else if (u.latest) {
+    txt += ' · à jour';
+  }
+  if (u.state === 'error') txt += ' · dernier essai en échec : ' + (u.message || 'voir journalctl -u pixregie-upgrade');
+  info.textContent = txt;
+  btn.hidden = !u.available || u.state === 'requested' || u.state === 'running';
+  renderUpgrade.pending = u.state === 'requested' || u.state === 'running';
+  if (renderUpgrade.pending) {
+    clearTimeout(renderUpgrade.t);
+    renderUpgrade.t = setTimeout(loadAdmin, 3000);
+  }
+}
+document.getElementById('upgrade-btn').addEventListener('click', () => {
+  if (confirm('Installer la dernière version sur le Pi ? L\'écran redémarre.')) {
+    act(() => post('v1/admin/upgrade', {}), 'Mise à jour lancée.');
+  }
+});
 
 document.getElementById('show-titles').addEventListener('change', (e) =>
   act(() => post('v1/admin/settings', { show_titles: e.target.checked }), 'Enregistré.'));

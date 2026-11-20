@@ -192,9 +192,7 @@ func (c *canvas) header(counts map[session.Status]int, o Options) {
 	c.fill(0, 0, Width, 56, cOutline)
 	c.fill(0, 56, Width, 60, cBarLine)
 
-	x := 24
-	x += c.text(c.f.title, x, c.vcenter(c.f.title, 0, 56), "PIXREGIE", cText, 4)
-	c.text(c.f.body, x+16, c.vcenter(c.f.body, 0, 56), "la régie de tes sessions Claude Code", cMuted, 0)
+	c.text(c.f.title, 24, c.vcenter(c.f.title, 0, 56), "PIXREGIE", cText, 4)
 
 	clock := o.Now.Format("15:04")
 	right := Width - 24

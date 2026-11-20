@@ -164,7 +164,7 @@ Its menu:
 |--------------------------|-------------------------------------------------------|
 | status line              | connected to the Pi, or what is wrong                 |
 | counters                 | working, waiting and stuck sessions on this machine   |
-| Rafraîchir               | rescan sessions now and look for the Pi again         |
+| Rafraîchir               | rescan sessions, look for the Pi and for an update    |
 | Ouvrir la page de debug  | the Pi's page: live picture of the screen and data    |
 | Lancer au démarrage      | launch at login; your choice is remembered            |
 | Associer à nouveau…      | pair again (new Pi, or after a reset)                 |
@@ -186,10 +186,16 @@ Changes apply immediately, without restarting anything.
 
 ## Update
 
-- **Pi and servers**: re-run the installer; the configuration is kept.
-- **macOS and Windows**: the app checks every few hours and shows
-  *Mettre à jour vers vX* in its menu; one click installs it and restarts
-  the app. The install command and a fresh `Pixregie.exe` also work.
+Nothing updates by itself; each update is one click or one command.
+
+- **Pi**: *Mettre à jour le Pi* on the Pi's page when a new version is out,
+  or re-run the installer. The configuration is kept.
+- **macOS and Windows**: the app checks every few hours (and on
+  *Rafraîchir*) and shows *Mettre à jour vers vX* in its menu; one click
+  installs it and restarts the app. The install command and a fresh
+  `Pixregie.exe` also work.
+- **Servers**: re-run `sudo bash install-server.sh` (it keeps the Pi's key
+  and the token).
 
 Pairing is kept across updates.
 
@@ -251,8 +257,8 @@ Pairing is kept across updates.
 
 `https://<pi-address>:7421` (any user name, your password) shows the live
 screen and what each machine reports, and lets you change settings (session
-titles, screen sleep) and rename or revoke paired machines. Changes apply
-at once. Servers are added and removed from the Pi's shell, since that
+titles, screen sleep), rename or revoke paired machines, and update the
+Pi. Changes apply at once. Servers are added and removed from the Pi's shell, since that
 sets up an SSH tunnel.
 
 The browser warns that the certificate is not trusted: the Pi made it
@@ -294,6 +300,12 @@ in 10 minutes the page refuses all attempts for a while.
   report as another. Reports are size-limited and sanitised.
 - The display service runs as a dedicated user under systemd sandboxing
   (no capabilities, read-only system, access to the framebuffer only).
+- **Updating the Pi from its page**: the service cannot replace its own
+  files; the button only drops a request file. A root unit
+  (`pixregie-upgrade.path`) then downloads the *latest* `install-pi.sh`,
+  checks it against the signed `SHA256SUMS` and runs it. The request's
+  content is never read, so the button can only install the latest signed
+  release; root writes its status in a directory of its own.
 
 ## Development
 
