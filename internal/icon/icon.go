@@ -1,5 +1,5 @@
-// Package icon draws the tray icon: the little control-room monitor whose
-// screen takes the colour of the most urgent session (validated design).
+// Package icon draws the tray icon: the control room's ON AIR sign, lit in
+// the colour of the most urgent session, dark when everything is idle.
 package icon
 
 import (
@@ -12,62 +12,27 @@ import (
 	"github.com/dmckminard/pixregie/internal/session"
 )
 
-var (
-	working = []string{
-		"................",
-		"................",
-		".oooooooooooooo.",
-		".oSSSSSSSSSSSSo.",
-		".oSLLLLSSSSSSSo.",
-		".oSSSLLLLLSSSSo.",
-		".oSLLLSSSSSSSSo.",
-		".oSSSSSSSSSSSSo.",
-		".oSSSSSSSSSSSSo.",
-		".oSSSSSSSSSSSSo.",
-		".oooooooooooooo.",
-		"......oooo......",
-		"....oooooooo....",
-		"................",
-		"................",
-		"................",
-	}
-	alert = []string{
-		"................",
-		"................",
-		".oooooooooooooo.",
-		".oSSSSSLLSSSSSo.",
-		".oSSSSSLLSSSSSo.",
-		".oSSSSSLLSSSSSo.",
-		".oSSSSSSSSSSSSo.",
-		".oSSSSSLLSSSSSo.",
-		".oSSSSSSSSSSSSo.",
-		".oSSSSSSSSSSSSo.",
-		".oooooooooooooo.",
-		"......oooo......",
-		"....oooooooo....",
-		"................",
-		"................",
-		"................",
-	}
-	idle = []string{
-		"................",
-		"................",
-		".oooooooooooooo.",
-		".o............o.",
-		".o............o.",
-		".o............o.",
-		".o............o.",
-		".o............o.",
-		".o............o.",
-		".o............o.",
-		".oooooooooooooo.",
-		"......oooo......",
-		"....oooooooo....",
-		"................",
-		"................",
-		"................",
-	}
-)
+// sign fills the whole 16×16 square: macOS draws every status icon at
+// 16×16 pt, so empty rows would make it look smaller than its neighbours.
+// 'o' frame, 'S' panel (state colour), 'L' letters.
+var sign = []string{
+	".oooooooooooooo.",
+	"oSSSSSSSSSSSSSSo",
+	"oSSSLLLSLSSLSSSo",
+	"oSSSLSLSLLSLSSSo",
+	"oSSSLSLSLSLLSSSo",
+	"oSSSLSLSLSSLSSSo",
+	"oSSSLLLSLSSLSSSo",
+	"oSSSSSSSSSSSSSSo",
+	"oSSLSSLLLSLLSSSo",
+	"oSLSLSSLSSLSLSSo",
+	"oSLLLSSLSSLLSSSo",
+	"oSLSLSSLSSLSLSSo",
+	"oSLSLSLLLSLSLSSo",
+	"oSSSSSSSSSSSSSSo",
+	".oooooooooooooo.",
+	"................",
+}
 
 func rgb(r, g, b uint8) color.RGBA { return color.RGBA{r, g, b, 255} }
 
@@ -78,16 +43,19 @@ const Disconnected session.Status = "disconnected"
 // light for dark menu bars, dark for light ones; macOS template icons use
 // black and let the system recolour them.
 func Image(st session.Status, scale int, outline color.RGBA) *image.RGBA {
-	rows, screen, line := idle, color.RGBA{}, color.RGBA{}
+	// Unlit (idle, disconnected): frame and letters in the menu bar's
+	// colour, panel transparent.
+	rows, screen, line := sign, color.RGBA{}, outline
 	switch st {
 	case session.Working:
-		rows, screen, line = working, rgb(0x4a, 0xde, 0x80), rgb(0x14, 0x53, 0x2d)
+		screen, line = rgb(0x4a, 0xde, 0x80), rgb(0x0c, 0x0a, 0x12)
 	case session.Waiting:
-		rows, screen, line = alert, rgb(0xfb, 0xbf, 0x24), rgb(0x42, 0x20, 0x06)
+		screen, line = rgb(0xfb, 0xbf, 0x24), rgb(0x0c, 0x0a, 0x12)
 	case session.Stale:
-		rows, screen, line = alert, rgb(0xf8, 0x71, 0x71), rgb(0x45, 0x0a, 0x0a)
+		screen, line = rgb(0xf8, 0x71, 0x71), rgb(0x0c, 0x0a, 0x12)
 	case Disconnected:
 		outline.A = 110
+		line = outline
 	}
 	img := image.NewRGBA(image.Rect(0, 0, 16*scale, 16*scale))
 	for y, row := range rows {
@@ -98,6 +66,9 @@ func Image(st session.Status, scale int, outline color.RGBA) *image.RGBA {
 				c = outline
 			case 'S':
 				c = screen
+				if c.A == 0 {
+					continue
+				}
 			case 'L':
 				c = line
 			default:
