@@ -188,3 +188,19 @@ func TestPasswordLockout(t *testing.T) {
 		t.Fatal("no lockout after repeated failures")
 	}
 }
+
+func TestServersAlwaysListed(t *testing.T) {
+	s := NewStore(30*time.Second, time.Hour)
+	s.SetServers([]string{"vps"})
+	m := s.Snapshot().Machines
+	if len(m) != 1 || m[0].Name != "vps" || !m[0].Server || m[0].Online {
+		t.Fatalf("unseen server should be listed offline: %+v", m)
+	}
+	s.Put("vps", Report{})
+	s.Put("mac", Report{})
+	for _, x := range s.Snapshot().Machines {
+		if x.Server != (x.Name == "vps") || !x.Online {
+			t.Fatalf("%+v", x)
+		}
+	}
+}

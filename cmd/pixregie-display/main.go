@@ -141,6 +141,11 @@ func serve(args []string) {
 		srv.SetAgents(c.Agents)
 		puller.set(c.Servers)
 		store.Retain(c.labels())
+		var servers []string
+		for _, s := range c.Servers {
+			servers = append(servers, s.Label)
+		}
+		store.SetServers(servers)
 		painter.setSleepAfter(c.sleepAfter())
 		painter.setHideTitles(!c.showTitles())
 	}

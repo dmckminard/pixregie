@@ -31,6 +31,9 @@ type Machine struct {
 	Online   bool              `json:"online"`
 	LastSeen time.Time         `json:"last_seen"`
 	Sessions []session.Session `json:"sessions"`
+	// Server is true for machines the Pi pulls through a tunnel: they run
+	// all the time, so being offline means something is broken.
+	Server bool `json:"server,omitempty"`
 }
 
 // State is the full picture handed to renderers.
@@ -52,6 +55,7 @@ type Store struct {
 	forgetAfter  time.Duration
 	now          func() time.Time
 	changed      chan struct{}
+	servers      map[string]bool
 }
 
 // NewStore: a machine is shown offline after offlineAfter without a report
@@ -109,6 +113,18 @@ func (s *Store) Retain(keep map[string]bool) {
 	}
 }
 
+// SetServers tells which labels are servers. A server that never answered
+// (tunnel down since the Pi started) still appears, offline.
+func (s *Store) SetServers(labels []string) {
+	m := make(map[string]bool, len(labels))
+	for _, l := range labels {
+		m[l] = true
+	}
+	s.mu.Lock()
+	s.servers = m
+	s.mu.Unlock()
+}
+
 // Changed returns a channel closed at the next Put (for live renderers).
 func (s *Store) Changed() <-chan struct{} {
 	s.mu.Lock()
@@ -133,6 +149,7 @@ func (s *Store) Snapshot() State {
 			Online:   age <= s.offlineAfter,
 			LastSeen: e.lastSeen,
 			Sessions: append([]session.Session(nil), e.sessions...),
+			Server:   s.servers[name],
 		}
 		sort.Slice(m.Sessions, func(i, j int) bool {
 			a, b := m.Sessions[i], m.Sessions[j]
@@ -142,6 +159,11 @@ func (s *Store) Snapshot() State {
 			return a.ID < b.ID
 		})
 		st.Machines = append(st.Machines, m)
+	}
+	for name := range s.servers {
+		if s.machines[name] == nil {
+			st.Machines = append(st.Machines, Machine{Name: name, Server: true})
+		}
 	}
 	sort.Slice(st.Machines, func(i, j int) bool { return st.Machines[i].Name < st.Machines[j].Name })
 	return st

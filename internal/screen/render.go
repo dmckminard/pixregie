@@ -134,15 +134,18 @@ func Render(st collector.State, o Options) *image.RGBA {
 		}
 	}
 
-	// Only machines with something to show get a room. The others (a
-	// server that runs all day with no session, a PC that is off) are a
-	// line in the footer. Colours stay tied to the machine, not the slot.
+	// Only machines with something to show get a room. The others are a
+	// line in the footer: servers that answer ("au repos") or not ("hors
+	// ligne": they run all day, so that is a fault). A Mac or PC that is
+	// off is normal and not shown at all. Colours stay tied to the
+	// machine, not the slot.
 	var rooms, resting []placed
 	for i, m := range st.Machines {
 		p := placed{m, machineAccents[i%len(machineAccents)]}
-		if len(m.Sessions) > 0 {
+		switch {
+		case len(m.Sessions) > 0:
 			rooms = append(rooms, p)
-		} else {
+		case m.Online || m.Server:
 			resting = append(resting, p)
 		}
 	}
@@ -230,7 +233,10 @@ func (c *canvas) footer(machines, sessions int, resting []placed, o Options) {
 	for _, p := range resting {
 		state := "au repos"
 		if !p.m.Online {
-			state = "hors ligne · " + ago(o.Now.Sub(p.m.LastSeen))
+			state = "hors ligne"
+			if !p.m.LastSeen.IsZero() {
+				state += " · " + ago(o.Now.Sub(p.m.LastSeen))
+			}
 		}
 		name := p.m.Name + " "
 		nw := c.textWidth(c.f.body, name, 0)
@@ -242,11 +248,7 @@ func (c *canvas) footer(machines, sessions int, resting []placed, o Options) {
 		c.fill(x, y+10, x+12, y+22, p.accent)
 		x += 12 + 8
 		x += c.text(c.f.body, x, ty, name, cText, 0)
-		col := cMuted
-		if !p.m.Online {
-			col = hex("#f87171")
-		}
-		x += c.text(c.f.body, x, ty, state, col, 0)
+		x += c.text(c.f.body, x, ty, state, cMuted, 0)
 	}
 }
 

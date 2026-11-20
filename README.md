@@ -54,9 +54,10 @@ Claude account, and it consumes no tokens.
 | blinking red screen           | was working, nothing moved for 10 minutes       |
 | dark screen, eyes closed      | the turn is over: your move                     |
 
-Only machines with sessions to show get a room. The others are listed in
-the footer: *au repos* (reachable, nothing running, e.g. a server between
-two sessions) or *hors ligne* in red (the Pi has lost it). A room's
+Only machines with sessions to show get a room. Servers without a session
+are listed in the footer: *au repos*, or *hors ligne* when the Pi cannot
+reach them (they run all the time, so that is a fault). A Mac or PC that is
+off simply does not appear. A room's
 **ON AIR** light is on while any of its sessions works. Closed
 sessions disappear; idle sessions not known to be open are hidden after an
 hour. Lamps turn on at night (19:00 to 07:00). After 30 minutes without
