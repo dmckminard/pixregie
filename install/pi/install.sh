@@ -19,7 +19,7 @@
 set -euo pipefail
 
 REPO="dmckminard/pixregie"
-RELEASE_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPrsmtv1WZ/gg6Fg2dz99VsjIpErQ0acaMFV1hBaFQLo pixregie-release"
+RELEASE_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIrtSnG8MQM0gp58pRN334KcOwqcJfxYVyjDExcqS6mC pixregie-release"
 VERSION="${PIXREGIE_VERSION:-latest}"
 SVC_USER="pixregie-display"
 TUN_USER="pixregie-tunnel"

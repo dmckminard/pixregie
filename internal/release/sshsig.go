@@ -18,7 +18,7 @@ import (
 
 // Key is the public key releases are signed with. Its private half lives
 // only in the repository's GitHub secrets.
-const Key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPrsmtv1WZ/gg6Fg2dz99VsjIpErQ0acaMFV1hBaFQLo pixregie-release"
+const Key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIrtSnG8MQM0gp58pRN334KcOwqcJfxYVyjDExcqS6mC pixregie-release"
 
 // Namespace binds signatures to this use (ssh-keygen -n).
 const Namespace = "pixregie-release"
