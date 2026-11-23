@@ -24,7 +24,8 @@ const (
 	lGarbage    = `{"type":"assistant","message":{"stop_re`
 )
 
-var now = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+// Just after the fixtures' entries (10:00:00–10:00:07), as in real life.
+var now = time.Date(2026, 1, 1, 10, 0, 10, 0, time.UTC)
 
 func write(t *testing.T, mtime time.Time, lines ...string) string {
 	t.Helper()
@@ -200,5 +201,19 @@ func TestSubagentActivity(t *testing.T) {
 	}
 	if got[0].Status != Working || got[0].Tool != "Task" || !got[0].Modified.Equal(now.Add(-10*time.Second)) {
 		t.Fatalf("got %s/%q %v", got[0].Status, got[0].Tool, got[0].Modified)
+	}
+}
+
+// A title or summary written into an old transcript changes its date, not
+// its activity: the session keeps the time of its last prompt or reply.
+func TestTitleWriteIsNotActivity(t *testing.T) {
+	later := now.Add(72 * time.Hour)
+	p := write(t, later, lPrompt, lToolUse, `{"type":"summary","summary":"Old work"}`)
+	s, err := ParseFile(p, Options{StaleAfter: 10 * time.Minute, Now: later})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Modified.After(now) || s.Status != Stale {
+		t.Fatalf("got %s at %v", s.Status, s.Modified)
 	}
 }

@@ -165,9 +165,9 @@ func TestOldURLUpgraded(t *testing.T) {
 func TestFilterDropsLongStale(t *testing.T) {
 	now := time.Now()
 	in := []session.Session{
-		{ID: "dead", Status: session.Stale, Modified: now.Add(-time.Hour)},
-		{ID: "dead-open", Status: session.Stale, Open: true, Modified: now.Add(-time.Hour)},
-		{ID: "stuck", Status: session.Stale, Modified: now.Add(-15 * time.Minute)},
+		{ID: "dead", Status: session.Stale, Modified: now.Add(-2 * time.Hour)},
+		{ID: "dead-open", Status: session.Stale, Open: true, Modified: now.Add(-2 * time.Hour)},
+		{ID: "stuck", Status: session.Stale, Modified: now.Add(-45 * time.Minute)},
 	}
 	if out := filter(in, now); len(out) != 1 || out[0].ID != "stuck" {
 		t.Fatalf("%+v", out)

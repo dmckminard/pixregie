@@ -64,6 +64,10 @@ type state struct {
 	title      string
 	titleRank  int // custom > generated > summary
 	last       time.Time
+	// conv is the time of the last prompt or reply. Claude Code also writes
+	// titles and summaries into old transcripts when a new session starts,
+	// which changes the file's date without any activity.
+	conv time.Time
 }
 
 func newState() *state {
@@ -93,6 +97,9 @@ func (s *state) apply(e *entry) {
 		s.applyAssistant(e)
 	case "user":
 		s.applyUser(e)
+	}
+	if (e.Type == "assistant" || e.Type == "user") && e.Timestamp.After(s.conv) {
+		s.conv = e.Timestamp
 	}
 }
 
@@ -240,6 +247,11 @@ func parseFile(path string, opt Options, sub time.Time) (Session, error) {
 		Title:      st.title,
 		LastEvent:  st.last,
 		Modified:   fi.ModTime(),
+	}
+	// Activity is the last prompt or reply, not the file's date (see conv);
+	// the file's date only for transcripts without timestamps.
+	if !st.conv.IsZero() && st.conv.Before(s.Modified) {
+		s.Modified = st.conv
 	}
 	if sub.After(s.Modified) {
 		s.Modified = sub
