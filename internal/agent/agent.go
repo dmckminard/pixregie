@@ -265,12 +265,20 @@ func (a *Agent) Snapshot(now time.Time) ([]session.Session, error) {
 	return filter(a.cfg.Tracker.Apply(list), now), nil
 }
 
+// StaleHideAfter: a session silent this long while it was working is
+// almost always one whose window was closed mid-turn (Claude Code does not
+// always report the end): it leaves the board.
+const StaleHideAfter = 30 * time.Minute
+
 // filter keeps what is worth showing: open sessions, anything not idle,
-// and sessions finished less than an hour ago.
+// and sessions finished less than an hour ago; stuck ones for a while.
 func filter(in []session.Session, now time.Time) []session.Session {
 	out := in[:0:0]
 	for _, s := range in {
 		if s.Status == session.Idle && !s.Open && now.Sub(s.Modified) > time.Hour {
+			continue
+		}
+		if s.Status == session.Stale && now.Sub(s.Modified) > StaleHideAfter {
 			continue
 		}
 		out = append(out, s)

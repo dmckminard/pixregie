@@ -161,3 +161,15 @@ func TestOldURLUpgraded(t *testing.T) {
 		t.Fatalf("%v %q", err, a.cfg.Server)
 	}
 }
+
+func TestFilterDropsLongStale(t *testing.T) {
+	now := time.Now()
+	in := []session.Session{
+		{ID: "dead", Status: session.Stale, Modified: now.Add(-time.Hour)},
+		{ID: "dead-open", Status: session.Stale, Open: true, Modified: now.Add(-time.Hour)},
+		{ID: "stuck", Status: session.Stale, Modified: now.Add(-15 * time.Minute)},
+	}
+	if out := filter(in, now); len(out) != 1 || out[0].ID != "stuck" {
+		t.Fatalf("%+v", out)
+	}
+}

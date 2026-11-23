@@ -51,7 +51,7 @@ Claude account, and it consumes no tokens.
 |-------------------------------|-------------------------------------------------|
 | green screen, scrolling lines | Claude is writing or a tool is running          |
 | amber screen + `!` bubble     | Claude Code waits for your permission (the desk flashes after 5 minutes) |
-| blinking red screen           | was working, nothing moved for 10 minutes       |
+| blinking red screen           | was working, nothing moved for 10 minutes (hidden after 30: the window was most likely closed) |
 | dark screen, eyes closed      | the turn is over: your move                     |
 
 Only machines with sessions to show get a room. Servers without a session
