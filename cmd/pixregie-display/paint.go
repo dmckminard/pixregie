@@ -33,6 +33,19 @@ type painter struct {
 	last       *image.RGBA
 	sleepAfter time.Duration // 0: never sleep
 	hideTitles bool
+	policy     screen.Policy
+}
+
+func (p *painter) setPolicy(v screen.Policy) {
+	p.mu.Lock()
+	p.policy = v
+	p.mu.Unlock()
+}
+
+func (p *painter) getPolicy() screen.Policy {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.policy
 }
 
 func (p *painter) setHideTitles(v bool) {
@@ -118,9 +131,9 @@ func (p *painter) run(ctx context.Context) {
 	for frame := 0; ; frame++ {
 		now := time.Now()
 		p.mu.Lock()
-		hide := p.hideTitles
+		hide, policy := p.hideTitles, p.policy
 		p.mu.Unlock()
-		opt := screen.Options{Frame: frame, Night: isNight(now), Now: now, Host: host + ".local", Scale: scale, HideTitles: hide}
+		opt := screen.Options{Frame: frame, Night: isNight(now), Now: now, Host: host + ".local", Scale: scale, HideTitles: hide, Policy: policy}
 		req, pairing := p.pairer.Pending()
 		if pairing {
 			opt.Pair = &req
@@ -138,7 +151,8 @@ func (p *painter) run(ctx context.Context) {
 			}
 			lastSeen = a
 		}
-		if active(st, pairing) {
+		// Only what is on the board keeps the screen awake.
+		if active(screen.Visible(st, policy, now), pairing) {
 			lastActive = now
 		}
 		sleep := sleepAfter > 0 && now.Sub(lastActive) > sleepAfter

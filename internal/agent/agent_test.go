@@ -64,15 +64,12 @@ func TestReportsAndStatus(t *testing.T) {
 	}
 }
 
-func TestFilterDropsOldIdle(t *testing.T) {
-	now := time.Now()
-	in := []session.Session{
-		{ID: "old", Status: session.Idle, Modified: now.Add(-2 * time.Hour)},
-		{ID: "old-open", Status: session.Idle, Open: true, Modified: now.Add(-2 * time.Hour)},
-		{ID: "recent", Status: session.Idle, Modified: now.Add(-time.Minute)},
-	}
-	if out := filter(in, now); len(out) != 2 || out[0].ID != "old-open" {
-		t.Fatalf("%+v", out)
+// The agent sends every recent session (the Pi decides), newest first and
+// capped.
+func TestFilterCaps(t *testing.T) {
+	in := make([]session.Session, maxSent+10)
+	if out := filter(in, time.Now()); len(out) != maxSent {
+		t.Fatalf("%d", len(out))
 	}
 }
 
@@ -159,17 +156,5 @@ func TestOldURLUpgraded(t *testing.T) {
 	a, err := New(Config{Server: "http://192.168.1.50:7421", Root: t.TempDir()})
 	if err != nil || a.cfg.Server != "https://192.168.1.50:7421" {
 		t.Fatalf("%v %q", err, a.cfg.Server)
-	}
-}
-
-func TestFilterDropsLongStale(t *testing.T) {
-	now := time.Now()
-	in := []session.Session{
-		{ID: "dead", Status: session.Stale, Modified: now.Add(-2 * time.Hour)},
-		{ID: "dead-open", Status: session.Stale, Open: true, Modified: now.Add(-2 * time.Hour)},
-		{ID: "stuck", Status: session.Stale, Modified: now.Add(-45 * time.Minute)},
-	}
-	if out := filter(in, now); len(out) != 1 || out[0].ID != "stuck" {
-		t.Fatalf("%+v", out)
 	}
 }

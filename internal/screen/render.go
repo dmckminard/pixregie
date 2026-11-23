@@ -26,10 +26,62 @@ type Options struct {
 	HideTitles bool
 	// Pair, when set, shows the pairing code over the room.
 	Pair *collector.PairRequest
-	// IdleHide drops idle sessions untouched for longer than this
-	// (default 1 h) unless they are known to be open: a finished,
-	// closed session has nothing to say on the board.
-	IdleHide time.Duration
+	// Policy decides which sessions are worth showing.
+	Policy Policy
+}
+
+// Policy says which sessions the board shows. Machines send every session
+// of the last week; the Pi decides, so delays and pins are set in one
+// place (its page).
+type Policy struct {
+	IdleHide  time.Duration   // finished sessions, after this long (default 1 h)
+	StaleHide time.Duration   // stuck sessions: the window was likely closed mid-turn (default 1 h)
+	Pinned    map[string]bool // session ids always shown
+}
+
+// WaitHide: a question or permission unanswered for a day belongs to a
+// session that was closed.
+const WaitHide = 24 * time.Hour
+
+// Shows reports whether s is on the board.
+func (p Policy) Shows(s session.Session, now time.Time) bool {
+	if p.Pinned[s.ID] {
+		return true
+	}
+	age := now.Sub(s.Modified)
+	switch s.Status {
+	case session.Idle:
+		return age <= orDefault(p.IdleHide, time.Hour)
+	case session.Stale:
+		return age <= orDefault(p.StaleHide, time.Hour)
+	case session.Waiting:
+		return age <= WaitHide
+	}
+	return true
+}
+
+func orDefault(d, def time.Duration) time.Duration {
+	if d <= 0 {
+		return def
+	}
+	return d
+}
+
+// Visible keeps the sessions of a state the policy shows.
+func Visible(st collector.State, p Policy, now time.Time) collector.State {
+	out := st
+	out.Machines = make([]collector.Machine, len(st.Machines))
+	for i, m := range st.Machines {
+		var keep []session.Session
+		for _, s := range m.Sessions {
+			if p.Shows(s, now) {
+				keep = append(keep, s)
+			}
+		}
+		m.Sessions = keep
+		out.Machines[i] = m
+	}
+	return out
 }
 
 // visible filters and orders one machine's sessions for the board: most
@@ -38,7 +90,7 @@ func visible(list []session.Session, o Options) []session.Session {
 	rank := map[session.Status]int{session.Waiting: 0, session.Stale: 1, session.Working: 2, session.Idle: 3}
 	out := make([]session.Session, 0, len(list))
 	for _, s := range list {
-		if s.Status == session.Idle && !s.Open && o.Now.Sub(s.Modified) > o.IdleHide {
+		if !o.Policy.Shows(s, o.Now) {
 			continue
 		}
 		out = append(out, s)
@@ -105,9 +157,6 @@ var (
 func Render(st collector.State, o Options) *image.RGBA {
 	if o.Scale == 0 {
 		o.Scale = 1
-	}
-	if o.IdleHide == 0 {
-		o.IdleHide = time.Hour
 	}
 	machines := make([]collector.Machine, len(st.Machines))
 	for i, m := range st.Machines {
@@ -408,10 +457,17 @@ func label(s session.Session, now time.Time) string {
 		}
 		return s.Tool
 	case session.Waiting:
-		if d := now.Sub(s.Modified); d >= time.Minute {
-			return "attend ton OK · " + ago(d)
+		what := "attend ton OK"
+		switch s.Tool {
+		case "AskUserQuestion":
+			what = "te pose une question"
+		case "ExitPlanMode":
+			what = "plan à valider"
 		}
-		return "attend ton OK"
+		if d := now.Sub(s.Modified); d >= time.Minute {
+			return what + " · " + ago(d)
+		}
+		return what
 	case session.Stale:
 		return "figée · " + ago(now.Sub(s.Modified))
 	default:

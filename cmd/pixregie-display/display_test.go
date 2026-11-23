@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,5 +106,35 @@ func TestUpgradeRequest(t *testing.T) {
 	os.WriteFile(u.status, []byte("error\t2026-11-20T10:00:00+01:00\tdownload failed\n"), 0o644)
 	if v := u.view(); v.State != "error" || v.Message != "download failed" {
 		t.Fatalf("%+v", v)
+	}
+}
+
+func TestPinAndDelays(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "display.json")
+	if err := save(path, Config{Agents: map[string]string{}}); err != nil {
+		t.Fatal(err)
+	}
+	var applied Config
+	a := &admin{path: path, apply: func(c Config) { applied = c }}
+	call := func(h http.HandlerFunc, body string) int {
+		w := httptest.NewRecorder()
+		h(w, httptest.NewRequest("POST", "/", strings.NewReader(body)))
+		return w.Code
+	}
+	if call(a.pin, `{"id":"abc-1","pinned":true}`) != http.StatusNoContent || !applied.policy().Pinned["abc-1"] {
+		t.Fatal("pin not saved")
+	}
+	if call(a.pin, `{"id":"../x","pinned":true}`) != http.StatusBadRequest {
+		t.Fatal("bad id accepted")
+	}
+	if call(a.pin, `{"id":"abc-1","pinned":false}`) != http.StatusNoContent || applied.policy().Pinned["abc-1"] {
+		t.Fatal("unpin not saved")
+	}
+	if call(a.settings, `{"idle_hide":"12h","stale_hide":"30m"}`) != http.StatusNoContent ||
+		applied.policy().IdleHide != 12*time.Hour || applied.policy().StaleHide != 30*time.Minute {
+		t.Fatalf("delays not saved: %+v", applied.policy())
+	}
+	if call(a.settings, `{"idle_hide":"5s"}`) != http.StatusBadRequest {
+		t.Fatal("arbitrary delay accepted")
 	}
 }

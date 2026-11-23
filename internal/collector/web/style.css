@@ -15,7 +15,7 @@ section { background: var(--panel); border: 2px solid var(--line); margin-bottom
 section h2 { margin: 0; padding: 8px 12px; font-size: 14px; display: flex; justify-content: space-between;
   border-bottom: 2px solid var(--line); }
 section.offline { opacity: .55; }
-.row { display: grid; grid-template-columns: 14px minmax(0,1.4fr) minmax(0,1fr) 70px 90px; gap: 10px;
+.row { display: grid; grid-template-columns: 14px minmax(0,1fr) minmax(0,1.6fr) minmax(0,0.8fr) minmax(0,1fr) 60px 44px; gap: 10px;
   padding: 6px 12px; align-items: center; border-bottom: 1px solid var(--line); }
 .row:last-child { border-bottom: 0; }
 .row > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -25,8 +25,8 @@ section.offline { opacity: .55; }
 .badge { display: inline-flex; gap: 6px; align-items: center; }
 .empty { padding: 8px 12px; }
 @media (max-width: 560px) {
-  .row { grid-template-columns: 14px minmax(0,1fr) 70px; }
-  .row .branch, .row .age { display: none; }
+  .row { grid-template-columns: 14px minmax(0,1fr) minmax(0,1fr) 44px; }
+  .row .branch, .row .age, .row .title { display: none; }
 }
 #screen { margin: 0 0 16px; border: 2px solid var(--line); background: #000; }
 #screen img { display: block; width: 100%; height: auto; image-rendering: pixelated; }
@@ -44,3 +44,9 @@ section.offline { opacity: .55; }
 .prow .name { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .small { font-size: 12px; padding: 0 12px; }
 code { background: var(--bg); padding: 1px 4px; }
+
+.row.hidden-session { opacity: .5; }
+.row .pin { min-width: 44px; min-height: 32px; padding: 0; background: none; border: 1px solid var(--line);
+  cursor: pointer; filter: grayscale(1); opacity: .6; }
+.row .pin.on { filter: none; opacity: 1; }
+.row .title { color: var(--fg); }

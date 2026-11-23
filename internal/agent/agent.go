@@ -256,7 +256,7 @@ func (a *Agent) hello(ctx context.Context, server string) (string, error) {
 
 // Snapshot scans the transcripts and returns what the board should show.
 func (a *Agent) Snapshot(now time.Time) ([]session.Session, error) {
-	list, err := session.Scan(a.cfg.Root, 24*time.Hour, session.Options{
+	list, err := session.Scan(a.cfg.Root, Window, session.Options{
 		Machine: a.host, StaleAfter: 10 * time.Minute, Now: now,
 	})
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -265,25 +265,19 @@ func (a *Agent) Snapshot(now time.Time) ([]session.Session, error) {
 	return filter(a.cfg.Tracker.Apply(list), now), nil
 }
 
-// StaleHideAfter: a session silent this long while it was working is
-// almost always one whose window was closed mid-turn (Claude Code does not
-// always report the end): it leaves the board.
-const StaleHideAfter = time.Hour
+// Window is how far back sessions are sent: the Pi decides what to show
+// (its delays, pinned sessions), so it gets every recent one.
+const Window = 7 * 24 * time.Hour
 
-// filter keeps what is worth showing: open sessions, anything not idle,
-// and sessions finished less than an hour ago; stuck ones for a while.
+// maxSent caps a report (the Pi accepts 200 sessions per machine).
+const maxSent = 150
+
+// filter keeps the newest sessions (Scan sorts them newest first).
 func filter(in []session.Session, now time.Time) []session.Session {
-	out := in[:0:0]
-	for _, s := range in {
-		if s.Status == session.Idle && !s.Open && now.Sub(s.Modified) > time.Hour {
-			continue
-		}
-		if s.Status == session.Stale && now.Sub(s.Modified) > StaleHideAfter {
-			continue
-		}
-		out = append(out, s)
+	if len(in) > maxSent {
+		in = in[:maxSent]
 	}
-	return out
+	return in
 }
 
 // ErrUnauthorized means the display rejected the token.

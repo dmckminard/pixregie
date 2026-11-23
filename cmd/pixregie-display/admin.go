@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -60,6 +61,8 @@ func (a *admin) get(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{
 		"show_titles": cfg.showTitles(),
 		"sleep_after": sleep,
+		"idle_hide":   orStr(cfg.IdleHide, "1h"),
+		"stale_hide":  orStr(cfg.StaleHide, "1h"),
 		"machines":    list,
 		"upgrade":     a.upgrade.view(),
 	})
@@ -88,10 +91,55 @@ func (a *admin) change(w http.ResponseWriter, r *http.Request, body any, f func(
 
 var sleepChoices = map[string]bool{"0": true, "10m": true, "30m": true, "1h": true, "2h": true, "4h": true}
 
+// Delays offered on the page for finished and stuck sessions; machines
+// send a week of sessions, so 168h is "always, within a week".
+var hideChoices = map[string]bool{"30m": true, "1h": true, "4h": true, "12h": true, "24h": true, "168h": true}
+
+func orStr(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+// maxPins keeps the config small.
+const maxPins = 50
+
+var sessionIDRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+
+// pin pins or unpins one session.
+func (a *admin) pin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID     string `json:"id"`
+		Pinned bool   `json:"pinned"`
+	}
+	a.change(w, r, &req, func(c *Config) error {
+		if !sessionIDRE.MatchString(req.ID) {
+			return errors.New("bad session id")
+		}
+		kept := c.Pinned[:0:0]
+		for _, id := range c.Pinned {
+			if id != req.ID {
+				kept = append(kept, id)
+			}
+		}
+		if req.Pinned {
+			if len(kept) >= maxPins {
+				return errors.New("50 sessions épinglées au plus")
+			}
+			kept = append(kept, req.ID)
+		}
+		c.Pinned = kept
+		return nil
+	})
+}
+
 func (a *admin) settings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ShowTitles *bool   `json:"show_titles"`
 		SleepAfter *string `json:"sleep_after"`
+		IdleHide   *string `json:"idle_hide"`
+		StaleHide  *string `json:"stale_hide"`
 	}
 	a.change(w, r, &req, func(c *Config) error {
 		if req.ShowTitles != nil {
@@ -103,6 +151,17 @@ func (a *admin) settings(w http.ResponseWriter, r *http.Request) {
 				return errors.New("unsupported sleep delay")
 			}
 			c.SleepAfter = *req.SleepAfter
+		}
+		for _, h := range []struct {
+			v   *string
+			dst *string
+		}{{req.IdleHide, &c.IdleHide}, {req.StaleHide, &c.StaleHide}} {
+			if h.v != nil {
+				if !hideChoices[*h.v] {
+					return errors.New("unsupported delay")
+				}
+				*h.dst = *h.v
+			}
 		}
 		return nil
 	})

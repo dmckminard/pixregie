@@ -62,12 +62,33 @@ func TestVisible(t *testing.T) {
 		mk("work", session.Working, time.Second),
 		mk("wait", session.Waiting, time.Minute),
 		mk("stale", session.Stale, 20*time.Minute),
-	}, Options{Now: now, IdleHide: time.Hour})
+	}, Options{Now: now, Policy: Policy{IdleHide: time.Hour}})
 	var ids []string
 	for _, s := range got {
 		ids = append(ids, s.ID)
 	}
 	if fmt.Sprint(ids) != "[wait stale work idle]" {
 		t.Fatalf("got %v", ids)
+	}
+}
+
+func TestPolicy(t *testing.T) {
+	now := time.Date(2026, 11, 23, 17, 0, 0, 0, time.UTC)
+	p := Policy{IdleHide: 4 * time.Hour, StaleHide: time.Hour, Pinned: map[string]bool{"pin": true}}
+	cases := []struct {
+		s    session.Session
+		show bool
+	}{
+		{session.Session{ID: "a", Status: session.Idle, Open: true, Modified: now.Add(-79 * time.Hour)}, false},
+		{session.Session{ID: "b", Status: session.Idle, Modified: now.Add(-3 * time.Hour)}, true},
+		{session.Session{ID: "c", Status: session.Stale, Modified: now.Add(-2 * time.Hour)}, false},
+		{session.Session{ID: "d", Status: session.Waiting, Modified: now.Add(-30 * time.Hour)}, false},
+		{session.Session{ID: "e", Status: session.Working, Modified: now.Add(-time.Minute)}, true},
+		{session.Session{ID: "pin", Status: session.Idle, Modified: now.Add(-100 * time.Hour)}, true},
+	}
+	for _, c := range cases {
+		if got := p.Shows(c.s, now); got != c.show {
+			t.Errorf("%s: shows=%v", c.s.ID, got)
+		}
 	}
 }

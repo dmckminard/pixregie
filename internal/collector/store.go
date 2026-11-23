@@ -87,6 +87,7 @@ func (s *Store) Put(machine string, r Report) {
 		x.Tool = trim(x.Tool)
 		x.Entrypoint = trim(x.Entrypoint)
 		x.Title = trim(x.Title)
+		x.Hidden, x.Pinned = false, false // the Pi decides, not agents
 		switch x.Status {
 		case session.Working, session.Waiting, session.Idle, session.Stale:
 		default:

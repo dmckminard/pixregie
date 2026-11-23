@@ -134,6 +134,18 @@ func serve(args []string) {
 	defer stop()
 	painter.sleepAfter = cfg.sleepAfter()
 	painter.hideTitles = !cfg.showTitles()
+	painter.policy = cfg.policy()
+	// The debug page lists every session, marked hidden or pinned.
+	srv.Annotate = func(st *collector.State) {
+		p, now := painter.getPolicy(), time.Now()
+		for i := range st.Machines {
+			for j := range st.Machines[i].Sessions {
+				s := &st.Machines[i].Sessions[j]
+				s.Pinned = p.Pinned[s.ID]
+				s.Hidden = !p.Shows(*s, now)
+			}
+		}
+	}
 	puller := newPuller(store, logger)
 	puller.set(cfg.Servers)
 	go puller.run(ctx)
@@ -148,6 +160,7 @@ func serve(args []string) {
 		store.SetServers(servers)
 		painter.setSleepAfter(c.sleepAfter())
 		painter.setHideTitles(!c.showTitles())
+		painter.setPolicy(c.policy())
 	}
 	go watchConfig(ctx, *path, logger, applyCfg)
 	upg := &upgrader{request: filepath.Join(filepath.Dir(*path), upgradeRequest), status: upgradeStatus, kick: make(chan struct{}, 1)}
@@ -158,6 +171,7 @@ func serve(args []string) {
 		"/v1/admin/settings": http.HandlerFunc(adm.settings),
 		"/v1/admin/rename":   http.HandlerFunc(adm.rename),
 		"/v1/admin/revoke":   http.HandlerFunc(adm.revoke),
+		"/v1/admin/pin":      http.HandlerFunc(adm.pin),
 		"/v1/admin/upgrade":  http.HandlerFunc(upg.post),
 	}
 	hs := &http.Server{

@@ -3,6 +3,21 @@
 const STATUSES = ['working', 'waiting', 'stale', 'idle'];
 const LABELS = { working: 'en cours', waiting: 'attend', stale: 'figée', idle: 'inactive' };
 
+// What the session is doing, as on the screen.
+function doing(s) {
+  if (s.status === 'waiting') {
+    if (s.tool === 'AskUserQuestion') return 'te pose une question';
+    if (s.tool === 'ExitPlanMode') return 'plan à valider';
+    return 'attend ton OK';
+  }
+  if (s.status === 'working') {
+    if (!s.tool) return 'réfléchit…';
+    if (s.tool === 'Task' || s.tool === 'Agent') return 'sous-agent…';
+    return s.tool;
+  }
+  return LABELS[s.status] || s.status;
+}
+
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -31,12 +46,20 @@ function render(state) {
     const list = m.sessions || [];
     if (!list.length) sec.append(el('div', 'empty muted', 'aucune session récente'));
     for (const s of list) {
-      if (m.online) counts[s.status] = (counts[s.status] || 0) + 1;
-      const row = el('div', 'row');
+      if (m.online && !s.hidden) counts[s.status] = (counts[s.status] || 0) + 1;
+      const row = el('div', 'row' + (s.hidden ? ' hidden-session' : ''));
       const dot = el('div', 'dot ' + s.status);
       dot.title = LABELS[s.status] || s.status;
-      row.append(dot, el('div', '', s.project), el('div', 'branch muted', s.branch || ''),
-        el('div', '', s.tool || (LABELS[s.status] || '')), el('div', 'age muted', ago(s.modified)));
+      const title = el('div', 'title', s.title || '—');
+      title.title = s.title || '';
+      const pin = el('button', 'pin' + (s.pinned ? ' on' : ''), s.pinned ? '📌' : '📍');
+      pin.type = 'button';
+      pin.title = s.pinned ? 'Désépingler' : 'Épingler : toujours affichée sur l\'écran';
+      pin.setAttribute('aria-label', pin.title);
+      pin.addEventListener('click', () =>
+        act(() => post('v1/admin/pin', { id: s.id, pinned: !s.pinned }), s.pinned ? 'Désépinglée.' : 'Épinglée.'));
+      row.append(dot, el('div', 'project', s.project), title, el('div', 'branch muted', s.branch || ''),
+        el('div', '', doing(s) + (s.hidden ? ' · masquée' : '')), el('div', 'age muted', ago(s.modified)), pin);
       sec.append(row);
     }
     root.append(sec);
@@ -125,6 +148,8 @@ async function loadAdmin() {
     const a = await r.json();
     document.getElementById('show-titles').checked = a.show_titles;
     document.getElementById('sleep-after').value = a.sleep_after;
+    document.getElementById('idle-hide').value = a.idle_hide;
+    document.getElementById('stale-hide').value = a.stale_hide;
     renderPaired(a.machines || []);
     renderUpgrade(a.upgrade || {});
   } catch (_) {
@@ -170,5 +195,9 @@ document.getElementById('show-titles').addEventListener('change', (e) =>
   act(() => post('v1/admin/settings', { show_titles: e.target.checked }), 'Enregistré.'));
 document.getElementById('sleep-after').addEventListener('change', (e) =>
   act(() => post('v1/admin/settings', { sleep_after: e.target.value }), 'Enregistré.'));
+document.getElementById('idle-hide').addEventListener('change', (e) =>
+  act(() => post('v1/admin/settings', { idle_hide: e.target.value }), 'Enregistré.'));
+document.getElementById('stale-hide').addEventListener('change', (e) =>
+  act(() => post('v1/admin/settings', { stale_hide: e.target.value }), 'Enregistré.'));
 loadAdmin();
 setInterval(loadAdmin, 15000);

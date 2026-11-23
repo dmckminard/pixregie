@@ -215,6 +215,12 @@ type Options struct {
 	Now        time.Time
 }
 
+// AsksUser reports whether a tool waits for the user's answer: a question
+// (AskUserQuestion) or a plan to approve (ExitPlanMode).
+func AsksUser(tool string) bool {
+	return tool == "AskUserQuestion" || tool == "ExitPlanMode"
+}
+
 // ParseFile reads the end of one transcript and returns its status record.
 func ParseFile(path string, opt Options) (Session, error) {
 	return parseFile(path, opt, time.Time{})
@@ -259,12 +265,23 @@ func parseFile(path string, opt Options, sub time.Time) (Session, error) {
 	if len(st.pending) > 0 {
 		s.Status = Working
 		s.Tool = st.lastTool
+		// These tools wait for the user, not for the machine.
+		for _, name := range st.pending {
+			if AsksUser(name) {
+				s.Status, s.Tool = Waiting, name
+			}
+		}
 	}
+	applyStale(&s, opt)
+	return s, nil
+}
+
+// applyStale turns a working session silent for StaleAfter into Stale.
+func applyStale(s *Session, opt Options) {
 	if s.Status == Working && opt.StaleAfter > 0 && opt.Now.Sub(s.Modified) > opt.StaleAfter {
 		s.Status = Stale
 		s.Tool = ""
 	}
-	return s, nil
 }
 
 func parse(r io.ReaderAt, size int64) (*state, error) {

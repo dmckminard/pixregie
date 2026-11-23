@@ -49,6 +49,8 @@ type Server struct {
 	// BoardID identifies this display, so a paired agent never reports to
 	// another Pixregie board on the same network.
 	BoardID string
+	// Annotate marks sessions (hidden, pinned) for the debug page.
+	Annotate func(*State)
 
 	mu sync.RWMutex // guards Auth.AgentTokens, which pairing extends
 
@@ -123,7 +125,11 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(s.Store.Snapshot())
+	st := s.Store.Snapshot()
+	if s.Annotate != nil {
+		s.Annotate(&st)
+	}
+	json.NewEncoder(w).Encode(st)
 }
 
 // SetAgents replaces the accepted agent tokens (config reloaded on disk).

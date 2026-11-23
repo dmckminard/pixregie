@@ -47,4 +47,7 @@ type Session struct {
 	// Open is true when Claude Code reported the session as running
 	// (SessionStart hook seen, no SessionEnd yet).
 	Open bool `json:"open,omitempty"`
+	// Set by the Pi for its debug page, never trusted from agents.
+	Hidden bool `json:"hidden,omitempty"`
+	Pinned bool `json:"pinned,omitempty"`
 }

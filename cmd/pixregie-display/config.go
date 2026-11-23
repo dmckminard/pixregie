@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/dmckminard/pixregie/internal/screen"
 )
 
 const defaultConfig = "/etc/pixregie/display.json"
@@ -26,6 +28,12 @@ type Config struct {
 	// ShowTitles shows session titles (derived from conversations) under
 	// each desk. Default true; set false for a screen others can see.
 	ShowTitles *bool `json:"show_titles,omitempty"`
+	// IdleHide and StaleHide: how long finished and stuck sessions stay on
+	// the board ("1h" by default each).
+	IdleHide  string `json:"idle_hide,omitempty"`
+	StaleHide string `json:"stale_hide,omitempty"`
+	// Pinned session ids are always shown.
+	Pinned []string `json:"pinned,omitempty"`
 	// BoardID is this display's public identifier, created at first start.
 	BoardID string `json:"board_id,omitempty"`
 }
@@ -38,6 +46,27 @@ type ServerConfig struct {
 	Label string `json:"label"`
 	URL   string `json:"url"`
 	Token string `json:"token"`
+}
+
+func duration(s string, def time.Duration) time.Duration {
+	d, err := time.ParseDuration(s)
+	if s == "" || err != nil || d <= 0 {
+		return def
+	}
+	return d
+}
+
+// policy is what the board shows, from the settings.
+func (c Config) policy() screen.Policy {
+	p := screen.Policy{
+		IdleHide:  duration(c.IdleHide, time.Hour),
+		StaleHide: duration(c.StaleHide, time.Hour),
+		Pinned:    map[string]bool{},
+	}
+	for _, id := range c.Pinned {
+		p.Pinned[id] = true
+	}
+	return p
 }
 
 func (c Config) sleepAfter() time.Duration {

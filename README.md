@@ -30,7 +30,8 @@ Claude account, and it consumes no tokens.
 
 - The agent reads Claude Code's local session files and keeps **metadata
   only**: project folder name, git branch, session title, current tool name,
-  status and timestamps.
+  status and timestamps, for the sessions of the last week (the Pi decides
+  which to show).
 - Prompts, commands, tool output and file contents **never leave the
   machine**. The session title is the one exception derived from the
   conversation (it is the name Claude Code shows for the session); it only
@@ -50,8 +51,8 @@ Claude account, and it consumes no tokens.
 | On the screen                 | Meaning                                         |
 |-------------------------------|-------------------------------------------------|
 | green screen, scrolling lines | Claude is writing or a tool is running          |
-| amber screen + `!` bubble     | Claude Code waits for your permission (the desk flashes after 5 minutes) |
-| blinking red screen           | was working, nothing moved for 10 minutes (hidden after an hour: the window was most likely closed) |
+| amber screen + `!` bubble     | Claude Code waits for you: a permission, a question, a plan to approve (the desk flashes after 5 minutes) |
+| blinking red screen           | was working, nothing moved for 10 minutes (most likely the window was closed mid-turn) |
 | dark screen, eyes closed      | the turn is over: your move                     |
 
 Only machines with sessions to show get a room. Servers without a session
@@ -59,8 +60,8 @@ are listed in the footer: *au repos*, or *hors ligne* when the Pi cannot
 reach them (they run all the time, so that is a fault). A Mac or PC that is
 off simply does not appear. A room's
 **ON AIR** light is on while any of its sessions works. Closed
-sessions disappear; idle sessions not known to be open are hidden after an
-hour. Lamps turn on at night (19:00 to 07:00). After 30 minutes without
+sessions disappear; finished and stuck sessions are hidden after an hour
+(both delays are set on the Pi's page), unless you pin them there. Lamps turn on at night (19:00 to 07:00). After 30 minutes without
 activity the screen goes to sleep, and wakes up at the first sign of
 activity (`"sleep_after"` in `/etc/pixregie/display.json`, `"0"` to
 disable). The picture moves by two pixels every ten minutes so that static
@@ -250,7 +251,7 @@ Pairing is kept across updates.
 | “Token refusé par le Pi”                 | *Associer à nouveau…*                                               |
 | “Certificat du Pi inconnu”               | The Pi was reinstalled from scratch (new certificate), or another device answers at its address. If it is your Pi: *Associer à nouveau…* |
 | Nothing reports after updating the Pi to 0.5 | Machines need 0.5 too (HTTPS): update the app on each.            |
-| A closed session stays on the screen     | It was opened before the hooks were installed: it disappears after an hour idle. |
+| A closed session stays on the screen     | It disappears after the delay set on the Pi's page (1 h by default). |
 | Black borders on the Pi's screen         | Reboot once after installing.                                       |
 | A server's room never appears            | On the Pi: `journalctl -u 'pixregie-tunnel@*' -n 20`; on the server: `journalctl -u pixregie-agent -n 20`. |
 
@@ -258,8 +259,10 @@ Pairing is kept across updates.
 
 `https://<pi-address>:7421` (any user name, your password) shows the live
 screen and what each machine reports, and lets you change settings (session
-titles, screen sleep), rename or revoke paired machines, and update the
-Pi. Changes apply at once. Servers are added and removed from the Pi's shell, since that
+titles, screen sleep, how long finished and stuck sessions stay), pin
+sessions so they always stay on the screen, rename or revoke paired
+machines, and update the Pi. Every session of the last week is listed,
+with its title; those the screen hides are greyed. Changes apply at once. Servers are added and removed from the Pi's shell, since that
 sets up an SSH tunnel.
 
 The browser warns that the certificate is not trusted: the Pi made it
