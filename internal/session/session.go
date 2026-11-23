@@ -42,8 +42,9 @@ type Session struct {
 	// generated title or summary). Unlike everything else here it is
 	// derived from the conversation; it is only shown on the local board.
 	Title     string    `json:"title,omitempty"`
-	LastEvent time.Time `json:"last_event"` // timestamp of the last transcript entry
-	Modified  time.Time `json:"modified"`   // file modification time
+	LastEvent time.Time `json:"last_event"`        // timestamp of the last transcript entry
+	Started   time.Time `json:"started,omitempty"` // first prompt or reply
+	Modified  time.Time `json:"modified"`          // file modification time
 	// Open is true when Claude Code reported the session as running
 	// (SessionStart hook seen, no SessionEnd yet).
 	Open bool `json:"open,omitempty"`

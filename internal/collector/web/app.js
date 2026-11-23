@@ -3,6 +3,16 @@
 const STATUSES = ['working', 'waiting', 'stale', 'idle'];
 const LABELS = { working: 'en cours', waiting: 'attend', stale: 'figée', idle: 'inactive' };
 
+// List options, remembered in this browser only.
+function pref(k, def) {
+  try { return localStorage.getItem(k) || def; } catch (_) { return def; }
+}
+function setPref(k, v) {
+  try { localStorage.setItem(k, v); } catch (_) {}
+}
+const sortBy = () => pref('pixregie-sort', 'activity');
+const showHidden = () => pref('pixregie-hidden', '0') === '1';
+
 // What the session is doing, as on the screen.
 function doing(s) {
   if (s.status === 'waiting') {
@@ -43,8 +53,11 @@ function render(state) {
     const h = el('h2');
     h.append(el('span', '', m.name), el('span', 'muted', m.online ? 'en ligne' : 'hors ligne · ' + ago(m.last_seen)));
     sec.append(h);
-    const list = m.sessions || [];
-    if (!list.length) sec.append(el('div', 'empty muted', 'aucune session récente'));
+    const key = sortBy() === 'started' ? (s) => s.started || s.modified : (s) => s.modified;
+    const all = m.sessions || [];
+    const list = all.filter((s) => !s.hidden || showHidden()).sort((a, b) => new Date(key(b)) - new Date(key(a)));
+    const masked = all.length - list.length;
+    if (!list.length) sec.append(el('div', 'empty muted', masked ? 'aucune session affichée' : 'aucune session récente'));
     for (const s of list) {
       if (m.online && !s.hidden) counts[s.status] = (counts[s.status] || 0) + 1;
       const row = el('div', 'row' + (s.hidden ? ' hidden-session' : ''));
@@ -201,3 +214,12 @@ document.getElementById('stale-hide').addEventListener('change', (e) =>
   act(() => post('v1/admin/settings', { stale_hide: e.target.value }), 'Enregistré.'));
 loadAdmin();
 setInterval(loadAdmin, 15000);
+
+{
+  const sel = document.getElementById('sort-by');
+  sel.value = sortBy();
+  sel.addEventListener('change', () => { setPref('pixregie-sort', sel.value); tick(); });
+  const hid = document.getElementById('show-hidden');
+  hid.checked = showHidden();
+  hid.addEventListener('change', () => { setPref('pixregie-hidden', hid.checked ? '1' : '0'); tick(); });
+}

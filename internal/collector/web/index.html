@@ -12,6 +12,12 @@
   <div id="totals"></div>
 </header>
 <figure id="screen"><img id="shot" alt="Écran du Pi" width="1280" height="720"></figure>
+<div class="sortbar muted"><label class="check"><input type="checkbox" id="show-hidden"> Afficher les sessions masquées</label>
+  <label>Trier par
+  <select id="sort-by">
+    <option value="activity">dernière activité</option>
+    <option value="started">date de démarrage</option>
+  </select></label></div>
 <main id="machines"><p class="muted">Chargement…</p></main>
 <section id="admin">
   <h2><span>Réglages</span><span id="admin-msg" class="muted" role="status"></span></h2>

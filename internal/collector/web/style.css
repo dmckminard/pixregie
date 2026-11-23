@@ -50,3 +50,5 @@ code { background: var(--bg); padding: 1px 4px; }
   cursor: pointer; filter: grayscale(1); opacity: .6; }
 .row .pin.on { filter: none; opacity: 1; }
 .row .title { color: var(--fg); }
+.sortbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 16px; margin: 0 0 8px; font-size: 13px; }
+.sortbar select { margin-left: 6px; }

@@ -68,6 +68,8 @@ type state struct {
 	// titles and summaries into old transcripts when a new session starts,
 	// which changes the file's date without any activity.
 	conv time.Time
+	// started is the first prompt or reply: when the session was opened.
+	started time.Time
 }
 
 func newState() *state {
@@ -98,8 +100,13 @@ func (s *state) apply(e *entry) {
 	case "user":
 		s.applyUser(e)
 	}
-	if (e.Type == "assistant" || e.Type == "user") && e.Timestamp.After(s.conv) {
-		s.conv = e.Timestamp
+	if (e.Type == "assistant" || e.Type == "user") && !e.Timestamp.IsZero() {
+		if e.Timestamp.After(s.conv) {
+			s.conv = e.Timestamp
+		}
+		if s.started.IsZero() || e.Timestamp.Before(s.started) {
+			s.started = e.Timestamp
+		}
 	}
 }
 
@@ -252,6 +259,7 @@ func parseFile(path string, opt Options, sub time.Time) (Session, error) {
 		Entrypoint: st.entrypoint,
 		Title:      st.title,
 		LastEvent:  st.last,
+		Started:    st.started,
 		Modified:   fi.ModTime(),
 	}
 	// Activity is the last prompt or reply, not the file's date (see conv);
@@ -296,6 +304,7 @@ func parse(r io.ReaderAt, size int64) (*state, error) {
 		head := newState()
 		scanLines(io.NewSectionReader(r, 0, min(headBytes, off)), false, head)
 		st.title, st.titleRank = head.title, head.titleRank
+		st.started = head.started
 	}
 	err := scanLines(io.NewSectionReader(r, off, size-off), off > 0, st)
 	return st, err
